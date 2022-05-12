@@ -13,11 +13,7 @@ const nodes2 = nodes.replace(/\n/g, " ")
 const infoArray = nodes2.split(' ');
 console.log(nodes);
 
-const singleId = await redis.clusterMyID();
-console.log(singleId);
-
 const idArray = [];
-
 for (let i = 0; i < infoArray.length; i++) {
   if ((infoArray[i].length === 40) && infoArray[i + 7] === "connected") {
     idArray.push(infoArray[i]);
