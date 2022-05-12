@@ -1,1 +1,1 @@
- import { EventEmitter, connect } from './deps.ts';
+import { connect, EventEmitter } from "./deps.ts";
