@@ -1,12 +1,5 @@
-<<<<<<< HEAD
 {
     "deno.enable": true,
     "deno.lint": true,
     "deno.unstable": true
-=======
-{
-    "deno.enable": true,
-    "deno.lint": true,
-    "deno.unstable": true,
->>>>>>> 8474d8a4c0bc50fc8303a0fcd533c05a876e806c
 }
