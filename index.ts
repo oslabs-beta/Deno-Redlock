@@ -1,4 +1,4 @@
-import { EventEmitter, connect, Client } from './deps.ts';
+import { EventEmitter, connect, Client, randomBytes } from './deps.ts';
 
 
 // * TESTING clusters
@@ -31,6 +31,7 @@ const getNodeConnectInfoFromCluster = async (client: Client) => {
   console.log(clientArray);
   return clientArray;
 }
+
 // getNodeIdsFromCluster(redis);
 // const nodeIds = await getNodeIdsFromCluster(redis);
 
@@ -188,6 +189,7 @@ export class Lock {
   }
 }
 
+// Redlock abort signal type definition
 export type RedlockAbortSignal = AbortSignal & { error?: Error };
 
 /**
@@ -196,18 +198,16 @@ export type RedlockAbortSignal = AbortSignal & { error?: Error };
  * be changed after it is first used, as doing so could have unintended
  * consequences for live locks.
  */
- export default class Redlock extends EventEmitter {
-   // need to change client stuff here
+export default class Redlock extends EventEmitter {
   public readonly clients: Set<Client>;
   public readonly settings: Settings;
   public readonly scripts: {
-    readonly acquireScript: { value: string; hash: string };
-    readonly extendScript: { value: string; hash: string };
-    readonly releaseScript: { value: string; hash: string };
+    readonly acquireScript: { value: string; hash: Promise<string> };
+    readonly extendScript: { value: string; hash: Promise<string> };
+    readonly releaseScript: { value: string; hash: Promise<string> };
   };
 
   public constructor(
-    // change client stuff here
     clientOrCluster: Client,
     settings: Partial<Settings> = {},
     scripts: {
@@ -217,6 +217,12 @@ export type RedlockAbortSignal = AbortSignal & { error?: Error };
     } = {}
   ) {
     super();
+
+    if (!clientOrCluster) {
+      throw new Error(
+        "Redlock must be instantiated with at least one redis client."
+      );
+    }
 
     // Prevent crashes on error events.
     this.on("error", () => {
@@ -230,29 +236,6 @@ export type RedlockAbortSignal = AbortSignal & { error?: Error };
       // This function serves to prevent node's default behavior of crashing
       // when an "error" event is emitted in the absence of listeners.
     });
-
-    // Create a new array of client, to ensure no accidental mutation.
-    // this.clients = new Set(clients);
-    // if (this.clients.size === 0) {
-    //   throw new Error(
-    //     "Redlock must be instantiated with at least one redis client."
-    //   );
-    // }
-
-    // If constructed with a cluster, establish connection to each Redis instance in cluster
-    try {
-      this.clients = new Set();
-      const connectInfoArray: string[][] = await getNodeConnectInfoFromCluster(clientOrCluster);
-      for (const [host, port] of connectInfoArray) {
-        const client: Client = await connect({hostname: host, port: Number(port)});
-        this.clients.add(client);
-      }
-    }
-    // otherwise set clients to single client instance
-    catch {
-      this.clients = new Set();
-      this.clients.add(clientOrCluster);
-    }
 
     // Customize the settings for this instance.
     this.settings = {
@@ -291,19 +274,47 @@ export type RedlockAbortSignal = AbortSignal & { error?: Error };
       typeof scripts.releaseScript === "function"
         ? scripts.releaseScript(RELEASE_SCRIPT)
         : RELEASE_SCRIPT;
-        
+
+    const getHashFromRedis = async (script: string): Promise<string> => {
+      return await clientOrCluster.scriptLoad(script);
+    }
+
     this.scripts = {
       acquireScript: {
         value: acquireScript,
-        hash: this._hash(acquireScript),
+        hash: getHashFromRedis(acquireScript),
       },
       extendScript: {
         value: extendScript,
-        hash: this._hash(extendScript),
+        hash: getHashFromRedis(extendScript),
       },
       releaseScript: {
         value: releaseScript,
-        hash: this._hash(releaseScript),
+        hash: getHashFromRedis(releaseScript),
       },
     };
+
+    this.clients = new Set();
+    const getClientConnections = async () => {
+       // If constructed with a cluster, establish connection to each Redis instance in cluster
+      try {
+        const connectInfoArray: string[][] = await getNodeConnectInfoFromCluster(clientOrCluster);
+        for (const [host, port] of connectInfoArray) {
+          const client: Client = await connect({hostname: host, port: Number(port)});
+          this.clients.add(client);
+        }
+      }
+      // otherwise set clients to single client instance
+      catch {
+        this.clients.add(clientOrCluster);
+      }
+    }
+    getClientConnections();
   }
+  /**
+   * Generate a cryptographically random string.
+   */
+  private _random(): string {
+    return randomBytes(16).toString("hex");
+  }
+}
