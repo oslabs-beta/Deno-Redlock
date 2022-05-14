@@ -5,11 +5,23 @@ import { ResourceLockedError, ExecutionError } from './errors.ts'
 import { Lock } from './lock.ts';
 
 // * TESTING clusters
-const redis: Client = await connect({ hostname: "127.0.0.1", port: 6380 });
-await redis.clusterMeet("127.0.0.1", 6381);
-await redis.clusterMeet("127.0.0.1", 6382);
+// const redis: Client = await connect({ hostname: "127.0.0.1", port: 6380 });
+// await redis.clusterMeet("127.0.0.1", 6381);
+// await redis.clusterMeet("127.0.0.1", 6382);
 
+// function getStringFromPromise(client: Client, script: string): string {
+//   let hash: string;
+  
+//   const acquireHashPromise: Promise<string> = client.scriptLoad(script)
+//     .then(acquireHash => {return acquireHash})
 
+//   const acquireHash = (): void => {
+//     acquireHashPromise.then(results => { hash = results })
+//     // return hash;
+//   }
+//   acquireHash();
+//   return hash;
+// }
 
 // Define default settings.
 const defaultSettings: Readonly<Settings> = {
@@ -34,8 +46,8 @@ export default class Redlock extends EventEmitter {
   public readonly settings: Settings;
   public readonly scripts: {
     readonly acquireScript: { value: string; hash: string };
-    readonly extendScript: { value: string; hash: Promise<string> };
-    readonly releaseScript: { value: string; hash: Promise<string> };
+    readonly extendScript: { value: string; hash: string | Promise<string> };
+    readonly releaseScript: { value: string; hash: string | Promise<string> };
   };
 
   public constructor(
@@ -106,13 +118,10 @@ export default class Redlock extends EventEmitter {
         ? scripts.releaseScript(RELEASE_SCRIPT)
         : RELEASE_SCRIPT;
 
-    const promiseHash = this._getHashFromRedis(clientOrCluster, acquireScript)
-    const acquireHash: string = Promise.resolve(promiseHash);
-    
     this.scripts = {
       acquireScript: {
         value: acquireScript,
-        hash: promiseHash,
+        hash: this._getHashFromRedis(clientOrCluster, acquireScript),
       },
       extendScript: {
         value: extendScript,
@@ -132,16 +141,11 @@ export default class Redlock extends EventEmitter {
   /**
    * This method loads scripts to a Redis client's cache and returns the hex'd sha1 hash of the string
   */
-  private async _getHashFromRedis(client: Client, script: string): Promise<string> {
-    const hash:string = await client.scriptLoad(script);
-    return hash;
+  private _getHashFromRedis(client: Client, script: string): string {
+    return client.scriptLoad(script).then(result => result)
   }
-  private _resolveHash(param: Promise<string>): string {
-    const hash2 = Promise.resolve(param);
-    return hash2;
-  }
+  
 
-  // _gethashFromRedis(normal param).then(data => return data)
 
   /**
    * This method pulls hostname and port out of cluster connection info, returns error if client is not a cluster
@@ -244,129 +248,277 @@ export default class Redlock extends EventEmitter {
       throw error;
     }
   }
-   /**
-   * This method unlocks the provided lock from all servers still persisting it.
-   * It will fail with an error if it is unable to release the lock on a quorum
-   * of nodes, but will make no attempt to restore the lock in the case of a
-   * failure to release. It is safe to re-attempt a release or to ignore the
-   * error, as the lock will automatically expire after its timeout.
+  /**
+ * This method unlocks the provided lock from all servers still persisting it.
+ * It will fail with an error if it is unable to release the lock on a quorum
+ * of nodes, but will make no attempt to restore the lock in the case of a
+ * failure to release. It is safe to re-attempt a release or to ignore the
+ * error, as the lock will automatically expire after its timeout.
+ */
+  public release(
+    lock: Lock,
+    settings?: Partial<Settings>
+  ): Promise<ExecutionResult> {
+    // Immediately invalidate the lock.
+    lock.expiration = 0;
+
+    // Attempt to release the lock.
+    return this._execute(
+      this.scripts.releaseScript,
+      lock.resources,
+      [lock.value],
+      settings
+    );
+  }
+
+  /**
+   * This method extends a valid lock by the provided `duration`.
    */
-    public release(
-      lock: Lock,
-      settings?: Partial<Settings>
-    ): Promise<ExecutionResult> {
-      // Immediately invalidate the lock.
-      lock.expiration = 0;
-  
-      // Attempt to release the lock.
-      return this._execute(
-        this.scripts.releaseScript,
-        lock.resources,
-        [lock.value],
-        settings
-      );
-    }
-  
-    /**
-     * This method extends a valid lock by the provided `duration`.
-     */
-    public async extend(
-      existing: Lock,
-      duration: number,
-      settings?: Partial<Settings>
-    ): Promise<Lock> {
-      if (Math.floor(duration) !== duration) {
-        throw new Error("Duration must be an integer value in milliseconds.");
-      }
-  
-      const start = Date.now();
-  
-      // The lock has already expired.
-      if (existing.expiration < Date.now()) {
-        throw new ExecutionError("Cannot extend an already-expired lock.", []);
-      }
-  
-      const { attempts } = await this._execute(
-        this.scripts.extendScript,
-        existing.resources,
-        [existing.value, duration],
-        settings
-      );
-  
-      // Invalidate the existing lock.
-      existing.expiration = 0;
-  
-      // Add 2 milliseconds to the drift to account for Redis expires precision,
-      // which is 1 ms, plus the configured allowable drift factor.
-      const drift =
-        Math.round(
-          (settings?.driftFactor ?? this.settings.driftFactor) * duration
-        ) + 2;
-  
-      const replacement = new Lock(
-        this,
-        existing.resources,
-        existing.value,
-        attempts,
-        start + duration - drift
-      );
-  
-      return replacement;
+  public async extend(
+    existing: Lock,
+    duration: number,
+    settings?: Partial<Settings>
+  ): Promise<Lock> {
+    if (Math.floor(duration) !== duration) {
+      throw new Error("Duration must be an integer value in milliseconds.");
     }
 
-    private async _execute(
-      script: { value: string; hash: string },
-      keys: string[],
-      args: (string | number)[],
-      _settings?: Partial<Settings>
-    ): Promise<ExecutionResult> {
-      const settings = _settings
-        ? {
-            ...this.settings,
-            ..._settings,
-          }
-        : this.settings;
-  
-      // For the purpose of easy config serialization, we treat a retryCount of
-      // -1 a equivalent to Infinity.
-      const maxAttempts =
-        settings.retryCount === -1 ? Infinity : settings.retryCount + 1;
-  
-      const attempts: Promise<ExecutionStats>[] = [];
-  
-      while (true) {
-        const { vote, stats } = await this._attemptOperation(script, keys, args);
-  
-        attempts.push(stats);
-  
-        // The operation achieved a quorum in favor.
-        if (vote === "for") {
-          return { attempts };
+    const start = Date.now();
+
+    // The lock has already expired.
+    if (existing.expiration < Date.now()) {
+      throw new ExecutionError("Cannot extend an already-expired lock.", []);
+    }
+
+    const { attempts } = await this._execute(
+      this.scripts.extendScript,
+      existing.resources,
+      [existing.value, duration],
+      settings
+    );
+
+    // Invalidate the existing lock.
+    existing.expiration = 0;
+
+    // Add 2 milliseconds to the drift to account for Redis expires precision,
+    // which is 1 ms, plus the configured allowable drift factor.
+    const drift =
+      Math.round(
+        (settings?.driftFactor ?? this.settings.driftFactor) * duration
+      ) + 2;
+
+    const replacement = new Lock(
+      this,
+      existing.resources,
+      existing.value,
+      attempts,
+      start + duration - drift
+    );
+
+    return replacement;
+  }
+
+  private async _execute(
+    script: { value: string; hash: string },
+    keys: string[],
+    args: (string | number)[],
+    _settings?: Partial<Settings>
+  ): Promise<ExecutionResult> {
+    const settings = _settings
+      ? {
+          ...this.settings,
+          ..._settings,
         }
-  
-        // Wait before reattempting.
-        if (attempts.length < maxAttempts) {
-          await new Promise((resolve) => {
-            setTimeout(
-              resolve,
-              Math.max(
-                0,
-                settings.retryDelay +
-                  Math.floor((Math.random() * 2 - 1) * settings.retryJitter)
-              ),
-              undefined
-            );
+      : this.settings;
+
+    // For the purpose of easy config serialization, we treat a retryCount of
+    // -1 a equivalent to Infinity.
+    const maxAttempts =
+      settings.retryCount === -1 ? Infinity : settings.retryCount + 1;
+
+    const attempts: Promise<ExecutionStats>[] = [];
+
+    while (true) {
+      const { vote, stats } = await this._attemptOperation(script, keys, args);
+
+      attempts.push(stats);
+
+      // The operation achieved a quorum in favor.
+      if (vote === "for") {
+        return { attempts };
+      }
+
+      // Wait before reattempting.
+      if (attempts.length < maxAttempts) {
+        await new Promise((resolve) => {
+          setTimeout(
+            resolve,
+            Math.max(
+              0,
+              settings.retryDelay +
+                Math.floor((Math.random() * 2 - 1) * settings.retryJitter)
+            ),
+            undefined
+          );
+        });
+      } else {
+        throw new ExecutionError(
+          "The operation was unable to achieve a quorum during its retry window.",
+          attempts
+        );
+      }
+    }
+  }
+
+  private async _attemptOperation(
+    script: { value: string; hash: string },
+    keys: string[],
+    args: (string | number)[]
+  ): Promise<
+    | { vote: "for"; stats: Promise<ExecutionStats> }
+    | { vote: "against"; stats: Promise<ExecutionStats> }
+  > {
+    return await new Promise((resolve) => {
+      const clientResults = [];
+      for (const client of this.clients) {
+        clientResults.push(
+          this._attemptOperationOnClient(client, script, keys, args)
+        );
+      }
+
+      const stats: ExecutionStats = {
+        membershipSize: clientResults.length,
+        quorumSize: Math.floor(clientResults.length / 2) + 1,
+        votesFor: new Set<Client>(),
+        votesAgainst: new Map<Client, Error>(),
+      };
+
+      let done: () => void;
+      const statsPromise = new Promise<typeof stats>((resolve) => {
+        done = () => resolve(stats);
+      });
+
+      // This is the expected flow for all successful and unsuccessful requests.
+      const onResultResolve = (clientResult: ClientExecutionResult): void => {
+        switch (clientResult.vote) {
+          case "for":
+            stats.votesFor.add(clientResult.client);
+            break;
+          case "against":
+            stats.votesAgainst.set(clientResult.client, clientResult.error);
+            break;
+        }
+
+        // A quorum has determined a success.
+        if (stats.votesFor.size === stats.quorumSize) {
+          resolve({
+            vote: "for",
+            stats: statsPromise,
           });
-        } else {
-          throw new ExecutionError(
-            "The operation was unable to achieve a quorum during its retry window.",
-            attempts
+        }
+
+        // A quorum has determined a failure.
+        if (stats.votesAgainst.size === stats.quorumSize) {
+          resolve({
+            vote: "against",
+            stats: statsPromise,
+          });
+        }
+
+        // All votes are in.
+        if (
+          stats.votesFor.size + stats.votesAgainst.size ===
+          stats.membershipSize
+        ) {
+          done();
+        }
+      };
+
+      // This is unexpected and should crash to prevent undefined behavior.
+      const onResultReject = (error: Error): void => {
+        throw error;
+      };
+
+      for (const result of clientResults) {
+        result.then(onResultResolve, onResultReject);
+      }
+    });
+  }
+
+  private async _attemptOperationOnClient(
+    client: Client,
+    script: { value: string; hash: string },
+    keys: string[],
+    args: (string | number)[]
+  ): Promise<ClientExecutionResult> {
+    try {
+      let result: number;
+      try {
+        // Attempt to evaluate the script by its hash.
+        const shaResult = (await client.evalsha(script.hash, keys.length, [
+          ...keys,
+          ...args,
+        ])) as unknown;
+
+        if (typeof shaResult !== "number") {
+          throw new Error(
+            `Unexpected result of type ${typeof shaResult} returned from redis.`
           );
         }
+
+        result = shaResult;
+      } catch (error) {
+        // If the redis server does not already have the script cached,
+        // reattempt the request with the script's raw text.
+        if (
+          !(error instanceof Error) ||
+          !error.message.startsWith("NOSCRIPT")
+        ) {
+          throw error;
+        }
+        const rawResult = (await client.eval(script.value, keys.length, [
+          ...keys,
+          ...args,
+        ])) as unknown;
+
+        if (typeof rawResult !== "number") {
+          throw new Error(
+            `Unexpected result of type ${typeof rawResult} returned from redis.`
+          );
+        }
+
+        result = rawResult;
       }
+
+      // One or more of the resources was already locked.
+      if (result !== keys.length) {
+        throw new ResourceLockedError(
+          `The operation was applied to: ${result} of the ${keys.length} requested resources.`
+        );
+      }
+
+      return {
+        vote: "for",
+        client,
+        value: result,
+      };
+    } catch (error) {
+      if (!(error instanceof Error)) {
+        throw new Error(
+          `Unexpected type ${typeof error} thrown with value: ${error}`
+        );
+      }
+
+      // Emit the error on the redlock instance for observability.
+      this.emit("error", error);
+
+      return {
+        vote: "against",
+        client,
+        error,
+      };
     }
+  }
+
 
 }
-
-
-const redlock: Redlock = new Redlock(redis);
