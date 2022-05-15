@@ -3,6 +3,14 @@ import { ACQUIRE_SCRIPT, EXTEND_SCRIPT, RELEASE_SCRIPT } from './scripts.ts';
 import { ClientExecutionResult, ExecutionStats, ExecutionResult, Settings, RedlockAbortSignal } from './types.ts';
 import { ResourceLockedError, ExecutionError } from './errors.ts'
 import { Lock } from './lock.ts';
+import { SHA1 } from './crypto.ts'
+
+
+// * TESTING sha1 algorithm
+const testString = 'return 1';
+const testHash = SHA1(testString);
+console.log(testHash);
+
 
 // * TESTING clusters
 // const redis: Client = await connect({ hostname: "127.0.0.1", port: 6380 });
