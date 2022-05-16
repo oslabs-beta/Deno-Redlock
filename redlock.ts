@@ -5,32 +5,6 @@ import { ResourceLockedError, ExecutionError } from './errors.ts'
 import { Lock } from './lock.ts';
 import { SHA1 } from './crypto.ts'
 
-
-// * TESTING sha1 algorithm
-const testString = 'return "This is what our script will be formatted like"';
-const testHash = SHA1(testString);
-console.log(testHash);
-
-
-// * TESTING clusters
-// const redis: Client = await connect({ hostname: "127.0.0.1", port: 6380 });
-// await redis.clusterMeet("127.0.0.1", 6381);
-// await redis.clusterMeet("127.0.0.1", 6382);
-
-// function getStringFromPromise(client: Client, script: string): string {
-//   let hash: string;
-
-//   const acquireHashPromise: Promise<string> = client.scriptLoad(script)
-//     .then(acquireHash => {return acquireHash})
-
-//   const acquireHash = (): void => {
-//     acquireHashPromise.then(results => { hash = results })
-//     // return hash;
-//   }
-//   acquireHash();
-//   return hash;
-// }
-
 // Define default settings.
 const defaultSettings: Readonly<Settings> = {
   driftFactor: 0.01,
@@ -150,38 +124,37 @@ export default class Redlock extends EventEmitter {
   }
 
   /**
+   * If constructed with a clustered redis instance,
+   * this method establishes the redlock instance's connection to each redis client of the cluster
+   */
+  private async _getClientConnections(client: Client): Promise<void> {
+    try {
+      const connectInfoArray: string[][] = await this._getNodeConnectInfoFromCluster(client);
+      for (const [host, port] of connectInfoArray) {
+        const client: Client = await connect({hostname: host, port: Number(port)});
+        this.clients.add(client);
+      }
+    }
+    // if error due to client not being a cluster, add single client instance to this.clients
+    catch {
+      this.clients.add(client);
+    }
+ }
+
+  /**
    * This method pulls hostname and port out of cluster connection info, returns error if client is not a cluster
   */
-  private async _getNodeConnectInfoFromCluster(client: Client) {
+   private async _getNodeConnectInfoFromCluster(client: Client) {
     const nodes = await client.clusterNodes();
     const nodeInfoArr = nodes.replace(/\n|@|:/g, " ").split(" ");
-    // console.log(nodeInfoArr);
     const clientArray = [];
     for (let i = 0; i < nodeInfoArr.length; i++) {
       if (nodeInfoArr[i] === "connected") {
         clientArray.push([nodeInfoArr[i-8], nodeInfoArr[i-7]]);
       }
     }
-    // console.log(clientArray);
     return clientArray;
   }
-
-  private async _getClientConnections(client: Client): Promise<void> {
-    // If constructed with a cluster, establish connection to each Redis instance in cluster
-    try {
-      const connectInfoArray: string[][] = await this._getNodeConnectInfoFromCluster(client);
-      for (const [host, port] of connectInfoArray) {
-        const client: Client = await connect({hostname: host, port: Number(port)});
-        this.clients.add(client);
-        // console.log(`adding client from cluster: `, client)
-      }
-    }
-    // if error due to clientOrCluster not being a cluster, set clients set to single client instance
-    catch {
-      this.clients.add(client);
-      // console.log('adding single client: ', client);
-    }
- }
 
   /**
    * Generate a cryptographically random string which will be lock value
