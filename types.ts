@@ -1,8 +1,7 @@
 import { Client } from './deps.ts'
 
 export type ClientExecutionResult =
-// there was another | here, replace if problems
-      {
+  | {
       client: Client;
       vote: "for";
       value: number;
@@ -34,9 +33,6 @@ export type ExecutionResult = {
   attempts: ReadonlyArray<Promise<ExecutionStats>>;
 };
 
-/**
- *
- */
 export interface Settings {
   readonly driftFactor: number;
   readonly retryCount: number;
@@ -47,3 +43,9 @@ export interface Settings {
 
 // Redlock abort signal type definition
 export type RedlockAbortSignal = AbortSignal & { error?: Error };
+
+export type Timeout = (
+  cb: (...args: any[]) => void,
+  delay?: number,
+  ...args: any[]
+): number;
