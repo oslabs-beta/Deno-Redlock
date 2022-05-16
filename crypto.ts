@@ -2,9 +2,9 @@
 // Bitwise operators: |, &, <<, >>, <<<, >>>
     // these treat the operands like 32 bit binary digits
     // then they do binary operations on those operands
-export const SHA1 = (msg:string):string => {
+export const SHA1 = (msg: string): string => {
     // function that performs left and right shift binary operations
-    const rotate_left = (n:number, s:number):number => {
+    const rotate_left = (n: number, s: number): number => {
         const t4 = (n << s) | (n >>> (32 - s));
         return t4;
     }
@@ -19,7 +19,7 @@ export const SHA1 = (msg:string):string => {
     // return str;
     // }
     // function to perform hex encoding
-    const cvt_hex = (val:number):string => {
+    const cvt_hex = (val: number): string => {
         let str='';
         for(let i = 7; i >= 0; i--) {
             const v = (val >>> (i * 4)) & 0x0f;
@@ -28,7 +28,7 @@ export const SHA1 = (msg:string):string => {
         return str;
     }
     // function to perform UTF-8 encoding
-    const Utf8Encode = (string:string):string => {
+    const Utf8Encode = (string: string): string => {
         string = string.replace(/\r\n/g,'\n');
         let utftext = '';
         for (let n = 0; n < string.length; n++) {
@@ -60,9 +60,9 @@ export const SHA1 = (msg:string):string => {
     const msg_len = msg.length;
     const word_array = [];
     for(let i = 0; i < msg_len - 3; i += 4) {
-        j = msg.charCodeAt(i) << 24 | 
+        j = msg.charCodeAt(i) << 24 |
             msg.charCodeAt(i + 1) << 16 |
-            msg.charCodeAt(i + 2) << 8 | 
+            msg.charCodeAt(i + 2) << 8 |
             msg.charCodeAt(i + 3);
         word_array.push(j);
     }

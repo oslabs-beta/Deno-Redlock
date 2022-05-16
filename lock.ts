@@ -14,12 +14,12 @@ export class Lock {
       public readonly attempts: ReadonlyArray<Promise<ExecutionStats>>,
       public expiration: number
     ) {}
-  
-    // async release(): Promise<ExecutionResult> {
-    //   return this.redlock.release(this);
-    // }
-  
-    // async extend(duration: number): Promise<Lock> {
-    //   return this.redlock.extend(this, duration);
-    // }
+
+    async release(): Promise<ExecutionResult> {
+      return this.redlock.release(this);
+    }
+
+    async extend(duration: number): Promise<Lock> {
+      return this.redlock.extend(this, duration);
+    }
   }

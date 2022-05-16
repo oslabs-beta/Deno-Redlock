@@ -1,13 +1,13 @@
 import { EventEmitter, connect, Client, randomBytes } from './deps.ts';
 import { ACQUIRE_SCRIPT, EXTEND_SCRIPT, RELEASE_SCRIPT } from './scripts.ts';
-import { ClientExecutionResult, ExecutionStats, ExecutionResult, Settings, RedlockAbortSignal } from './types.ts';
+import { ClientExecutionResult, ExecutionStats, ExecutionResult, Settings, RedlockAbortSignal, Timeout } from './types.ts';
 import { ResourceLockedError, ExecutionError } from './errors.ts'
 import { Lock } from './lock.ts';
 import { SHA1 } from './crypto.ts'
 
 
 // * TESTING sha1 algorithm
-const testString = 'return 1';
+const testString = 'return "This is what our script will be formatted like"';
 const testHash = SHA1(testString);
 console.log(testHash);
 
@@ -19,7 +19,7 @@ console.log(testHash);
 
 // function getStringFromPromise(client: Client, script: string): string {
 //   let hash: string;
-  
+
 //   const acquireHashPromise: Promise<string> = client.scriptLoad(script)
 //     .then(acquireHash => {return acquireHash})
 
@@ -88,7 +88,7 @@ export default class Redlock extends EventEmitter {
       // when an "error" event is emitted in the absence of listeners.
     });
 
-    // Customize the settings for this instance.
+    // Customize the settings for this instance. Use default settings or user provided settings
     this.settings = {
       driftFactor:
         typeof settings.driftFactor === "number"
@@ -126,18 +126,21 @@ export default class Redlock extends EventEmitter {
         ? scripts.releaseScript(RELEASE_SCRIPT)
         : RELEASE_SCRIPT;
 
+    // set script value and hashed sha1 digest of script values
+    // the value will be used in initial EVAL call to Redis instances
+    // the hashed values will be called in subsequent EVALSHA calls to Redis instances
     this.scripts = {
       acquireScript: {
         value: acquireScript,
-        hash: this._getHashFromRedis(clientOrCluster, acquireScript),
+        hash: SHA1(acquireScript),
       },
       extendScript: {
         value: extendScript,
-        hash: this._getHashFromRedis(clientOrCluster, extendScript),
+        hash: SHA1(extendScript),
       },
       releaseScript: {
         value: releaseScript,
-        hash: this._getHashFromRedis(clientOrCluster, releaseScript),
+        hash: SHA1(releaseScript),
       },
     };
 
@@ -145,15 +148,6 @@ export default class Redlock extends EventEmitter {
     this.clients = new Set();
     this._getClientConnections(clientOrCluster);
   }
-
-  /**
-   * This method loads scripts to a Redis client's cache and returns the hex'd sha1 hash of the string
-  */
-  private _getHashFromRedis(client: Client, script: string): string {
-    return client.scriptLoad(script).then(result => result)
-  }
-  
-
 
   /**
    * This method pulls hostname and port out of cluster connection info, returns error if client is not a cluster
@@ -291,10 +285,10 @@ export default class Redlock extends EventEmitter {
       throw new Error("Duration must be an integer value in milliseconds.");
     }
 
-    const start = Date.now();
+    const start = performance.now();
 
     // The lock has already expired.
-    if (existing.expiration < Date.now()) {
+    if (existing.expiration < performance.now()) {
       throw new ExecutionError("Cannot extend an already-expired lock.", []);
     }
 
@@ -528,5 +522,149 @@ export default class Redlock extends EventEmitter {
     }
   }
 
+  /**
+   * Wrap and execute a routine in the context of an auto-extending lock,
+   * returning a promise of the routine's value. In the case that auto-extension
+   * fails, an AbortSignal will be updated to indicate that abortion of the
+   * routine is in order, and to pass along the encountered error.
+   *
+   * @example
+   * ```ts
+   * await redlock.using([senderId, recipientId], 5000, { retryCount: 5 }, async (signal) => {
+   *   const senderBalance = await getBalance(senderId);
+   *   const recipientBalance = await getBalance(recipientId);
+   *
+   *   if (senderBalance < amountToSend) {
+   *     throw new Error("Insufficient balance.");
+   *   }
+   *
+   *   // The abort signal will be true if:
+   *   // 1. the above took long enough that the lock needed to be extended
+   *   // 2. redlock was unable to extend the lock
+   *   //
+   *   // In such a case, exclusivity can no longer be guaranteed for further
+   *   // operations, and should be handled as an exceptional case.
+   *   if (signal.aborted) {
+   *     throw signal.error;
+   *   }
+   *
+   *   await setBalances([
+   *     {id: senderId, balance: senderBalance - amountToSend},
+   *     {id: recipientId, balance: recipientBalance + amountToSend},
+   *   ]);
+   * });
+   * ```
+   */
 
+   public async using<T>(
+    resources: string[],
+    duration: number,
+    settings: Partial<Settings>,
+    routine?: (signal: RedlockAbortSignal) => Promise<T>
+  ): Promise<T>;
+
+  public async using<T>(
+    resources: string[],
+    duration: number,
+    routine: (signal: RedlockAbortSignal) => Promise<T>
+  ): Promise<T>;
+
+  public async using<T>(
+    resources: string[],
+    duration: number,
+    settingsOrRoutine:
+      | undefined
+      | Partial<Settings>
+      | ((signal: RedlockAbortSignal) => Promise<T>),
+    optionalRoutine?: (signal: RedlockAbortSignal) => Promise<T>
+  ): Promise<T> {
+
+    if (Math.floor(duration) !== duration) {
+      throw new Error("Duration must be an integer value in milliseconds.");
+    }
+
+    const settings =
+      settingsOrRoutine && typeof settingsOrRoutine !== "function"
+        ? {
+            ...this.settings,
+            ...settingsOrRoutine,
+          }
+        : this.settings;
+
+    const routine = optionalRoutine ?? settingsOrRoutine;
+    if (typeof routine !== "function") {
+      throw new Error("INVARIANT: routine is not a function.");
+    }
+
+    if (settings.automaticExtensionThreshold > duration - 100) {
+      throw new Error(
+        "A lock `duration` must be at least 100ms greater than the `automaticExtensionThreshold` setting."
+      );
+    }
+
+    // The AbortController/AbortSignal pattern allows the routine to be notified
+    // of a failure to extend the lock, and subsequent expiration. In the event
+    // of an abort, the error object will be made available at `signal.error`.
+    const controller = new AbortController();
+      // typeof AbortController === "undefined"
+      //   ? new PolyfillAbortController()
+      //   : new AbortController();
+
+    const signal = controller.signal as RedlockAbortSignal;
+
+    function queue(): void {
+      timeout = setTimeout(
+        () => (extension = extend()),
+        lock.expiration - performance.now() - settings.automaticExtensionThreshold
+      );
+    }
+
+    async function extend(): Promise<void> {
+      timeout = undefined;
+
+      try {
+        lock = await lock.extend(duration);
+        queue();
+      } catch (error) {
+        if (!(error instanceof Error)) {
+          throw new Error(`Unexpected thrown ${typeof error}: ${error}.`);
+        }
+
+        if (lock.expiration > performance.now()) {
+          return (extension = extend());
+        }
+
+        signal.error = error instanceof Error ? error : new Error(`${error}`);
+        controller.abort();
+      }
+    }
+
+    let timeout: undefined | Timeout;
+    let extension: undefined | Promise<void>;
+
+    let lock = await this.acquire(resources, duration, settings);
+    queue();
+
+    try {
+      return await routine(signal);
+    } finally {
+      // Clean up the timer.
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = undefined;
+      }
+
+      // Wait for an in-flight extension to finish.
+      if (extension) {
+        await extension.catch(() => {
+          // An error here doesn't matter at all, because the routine has
+          // already completed, and a release will be attempted regardless. The
+          // only reason for waiting here is to prevent possible contention
+          // between the extension and release.
+        });
+      }
+
+      await lock.release();
+    }
+  }
 }
