@@ -28,8 +28,8 @@ export default class Redlock extends EventEmitter {
   public readonly settings: Settings;
   public readonly scripts: {
     readonly acquireScript: { value: string; hash: string };
-    readonly extendScript: { value: string; hash: string | Promise<string> };
-    readonly releaseScript: { value: string; hash: string | Promise<string> };
+    readonly extendScript: { value: string; hash: string };
+    readonly releaseScript: { value: string; hash: string };
   };
 
   public constructor(
@@ -120,7 +120,7 @@ export default class Redlock extends EventEmitter {
 
     // add all redis cluster instances/single client to clients set
     this.clients = new Set();
-    this._getClientConnections(clientOrCluster);
+    Promise.resolve(this._getClientConnections(clientOrCluster));
   }
 
   /**
@@ -612,7 +612,7 @@ export default class Redlock extends EventEmitter {
       }
     }
 
-    let timeout: undefined | Timeout;
+    let timeout: undefined | number;
     let extension: undefined | Promise<void>;
 
     let lock = await this.acquire(resources, duration, settings);

@@ -48,4 +48,4 @@ export type Timeout = (
   cb: (...args: any[]) => void,
   delay?: number,
   ...args: any[]
-): number;
+) => number;
