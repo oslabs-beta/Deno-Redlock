@@ -1,4 +1,4 @@
-import { EventEmitter, connect, Client, randomBytes } from './deps.ts';
+import { EventEmitter, connect, Client, randomBytes, RedisValue } from './deps.ts';
 import { ACQUIRE_SCRIPT, EXTEND_SCRIPT, RELEASE_SCRIPT } from './scripts.ts';
 import { ClientExecutionResult, ExecutionStats, ExecutionResult, Settings, RedlockAbortSignal, Timeout } from './types.ts';
 import { ResourceLockedError, ExecutionError } from './errors.ts'
@@ -296,7 +296,7 @@ export default class Redlock extends EventEmitter {
   private async _execute(
     script: { value: string; hash: string },
     keys: string[],
-    args: (string | number)[],
+    args: RedisValue[],
     _settings?: Partial<Settings>
   ): Promise<ExecutionResult> {
     const settings = _settings
@@ -348,7 +348,7 @@ export default class Redlock extends EventEmitter {
   private async _attemptOperation(
     script: { value: string; hash: string },
     keys: string[],
-    args: (string | number)[]
+    args: RedisValue[]
   ): Promise<
     | { vote: "for"; stats: Promise<ExecutionStats> }
     | { vote: "against"; stats: Promise<ExecutionStats> }
@@ -424,16 +424,13 @@ export default class Redlock extends EventEmitter {
     client: Client,
     script: { value: string; hash: string },
     keys: string[],
-    args: (string | number)[]
+    args: RedisValue[]
   ): Promise<ClientExecutionResult> {
     try {
       let result: number;
       try {
         // Attempt to evaluate the script by its hash.
-        const shaResult = (await client.evalsha(script.hash, keys.length, [
-          ...keys,
-          ...args,
-        ])) as unknown;
+        const shaResult = (await client.evalsha(script.hash, keys, args)) as unknown;
 
         if (typeof shaResult !== "number") {
           throw new Error(
@@ -447,14 +444,12 @@ export default class Redlock extends EventEmitter {
         // reattempt the request with the script's raw text.
         if (
           !(error instanceof Error) ||
-          !error.message.startsWith("NOSCRIPT")
+          // !error.message.startsWith("NOSCRIPT")
+          !error.message.startsWith("-NOSCRIPT")
         ) {
           throw error;
         }
-        const rawResult = (await client.eval(script.value, keys.length, [
-          ...keys,
-          ...args,
-        ])) as unknown;
+        const rawResult = (await client.eval(script.value, keys, args)) as unknown;
 
         if (typeof rawResult !== "number") {
           throw new Error(
