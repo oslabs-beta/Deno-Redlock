@@ -145,7 +145,16 @@ export default class Redlock extends EventEmitter {
       }
       console.log(this.clients);
       console.log('leaving the try block of _getClientConnections function');
-      await this.acquire(["ef939d69727d7bb0a1d914d3e4f99367ba2d7cce"], 5000, {
+    }
+    // if error due to client not being a cluster, add single client instance to this.clients
+    catch {
+        console.log('in the catch block of _getClientConnections function');
+        console.log(client);
+      this.clients.add(client);
+      console.log(this.clients);
+      const nodeInfo = await client.info();
+      await console.log(nodeInfo);
+      await this.acquire(["0705716cac11f0d533937b39e4bf13178089e9f9"], 5000, {
         // The expected clock drift; for more details see:
         // http://redis.io/topics/distlock
         driftFactor: 0.01, // multiplied by lock ttl to determine drift time
@@ -166,13 +175,6 @@ export default class Redlock extends EventEmitter {
         // attempted with the `using` API.
         automaticExtensionThreshold: 500, // time in ms
       });
-    }
-    // if error due to client not being a cluster, add single client instance to this.clients
-    catch {
-        console.log('in the catch block of _getClientConnections function');
-        console.log(client);
-      this.clients.add(client);
-      console.log(this.clients);
     }
  }
 
@@ -410,7 +412,7 @@ export default class Redlock extends EventEmitter {
       console.log('in the attemptOperation function');
     return await new Promise(async (resolve) => {
         console.log('in the return statement for attemptOperation');
-      const clientResults:ClientExecutionResult[] = [];
+      let clientResults:ClientExecutionResult[] = [];
       console.log('this.clients --> ', this.clients);
     //   const clientArray = Array.from(this.clients);
     //   console.log('clientArray --> ', clientArray);
@@ -452,15 +454,15 @@ export default class Redlock extends EventEmitter {
         //         this.attemptOperationOnClient(el, script, keys, args);
         //     )
         // })
-        const eachOp = await this._attemptOperationOnClient(clientArr[0], script, keys, args);
+        //const eachOp = await this._attemptOperationOnClient(clientArr[0], script, keys, args);
         // const evalHash = await clientArr[0].evalsha(script.hash, keys, [
         //     ...keys,
         //     ...args,
         //   ]);
         // await console.log('evalHash ==> ', evalHash);
-
-        await clientResults.push(eachOp);
-      console.log('clientResults after calling this._attemptOperationOnClient on each client --> ', clientResults);
+        // clientResults = [];
+        // clientResults.push(eachOp);
+      console.log('clientResults after calling this._attemptOperationOnClient on client --> ', clientResults);
 
       const stats: ExecutionStats = {
         membershipSize: clientResults.length,
