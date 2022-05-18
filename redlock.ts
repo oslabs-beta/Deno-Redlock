@@ -1,9 +1,10 @@
+// deno-lint-ignore-file
 import { EventEmitter, connect, Client, randomBytes, RedisValue } from './deps.ts';
 import { ACQUIRE_SCRIPT, EXTEND_SCRIPT, RELEASE_SCRIPT } from './scripts.ts';
 import { ClientExecutionResult, ExecutionStats, ExecutionResult, Settings, RedlockAbortSignal, Timeout } from './types.ts';
 import { ResourceLockedError, ExecutionError } from './errors.ts'
 import { Lock } from './lock.ts';
-import { SHA1 } from './crypto.ts'
+import { SHA1 } from './crypto.ts';
 
 // Define default settings.
 const defaultSettings: Readonly<Settings> = {
@@ -28,8 +29,8 @@ export default class Redlock extends EventEmitter {
   public readonly settings: Settings;
   public readonly scripts: {
     readonly acquireScript: { value: string; hash: string };
-    readonly extendScript: { value: string; hash: string };
-    readonly releaseScript: { value: string; hash: string };
+    readonly extendScript: { value: string; hash: string | string };
+    readonly releaseScript: { value: string; hash: string | string };
   };
 
   public constructor(
@@ -117,9 +118,13 @@ export default class Redlock extends EventEmitter {
         hash: SHA1(releaseScript),
       },
     };
+    console.log(clientOrCluster);
+    // add all redis cluster instances/single client to clients set
 
     // add all redis cluster instances/single client to clients set
+    console.log('creating a new Set');
     this.clients = new Set();
+    console.log('calling _getClientConnections');
     Promise.resolve(this._getClientConnections(clientOrCluster));
   }
 
@@ -127,33 +132,69 @@ export default class Redlock extends EventEmitter {
    * If constructed with a clustered redis instance,
    * this method establishes the redlock instance's connection to each redis client of the cluster
    */
-  private async _getClientConnections(client: Client): Promise<void> {
+  public async _getClientConnections(client: Client): Promise<void> {
+      console.log('in _getClientConnections function');
     try {
+        console.log('calling _getNodeConnectInfoFromCluster');
       const connectInfoArray: string[][] = await this._getNodeConnectInfoFromCluster(client);
+      console.log('back in _getClientConnections, after finishing _getNodeConnectInfoFromCluster');
+      console.log(connectInfoArray);
       for (const [host, port] of connectInfoArray) {
         const client: Client = await connect({hostname: host, port: Number(port)});
         this.clients.add(client);
       }
+      console.log(this.clients);
+      console.log('leaving the try block of _getClientConnections function');
+      await this.acquire(["ef939d69727d7bb0a1d914d3e4f99367ba2d7cce"], 5000, {
+        // The expected clock drift; for more details see:
+        // http://redis.io/topics/distlock
+        driftFactor: 0.01, // multiplied by lock ttl to determine drift time
+    
+        // The max number of times Redlock will attempt to lock a resource
+        // before erroring.
+        retryCount: 10,
+    
+        // the time in ms between attempts
+        retryDelay: 200, // time in ms
+    
+        // the max time in ms randomly added to retries
+        // to improve performance under high contention
+        // see https://www.awsarchitectureblog.com/2015/03/backoff.html
+        retryJitter: 200, // time in ms
+    
+        // The minimum remaining time on a lock before an extension is automatically
+        // attempted with the `using` API.
+        automaticExtensionThreshold: 500, // time in ms
+      });
     }
     // if error due to client not being a cluster, add single client instance to this.clients
     catch {
+        console.log('in the catch block of _getClientConnections function');
+        console.log(client);
       this.clients.add(client);
+      console.log(this.clients);
     }
  }
 
   /**
    * This method pulls hostname and port out of cluster connection info, returns error if client is not a cluster
   */
-   private async _getNodeConnectInfoFromCluster(client: Client) {
-    const nodes = await client.clusterNodes();
-    const nodeInfoArr = nodes.replace(/\n|@|:/g, " ").split(" ");
-    const clientArray = [];
-    for (let i = 0; i < nodeInfoArr.length; i++) {
-      if (nodeInfoArr[i] === "connected") {
-        clientArray.push([nodeInfoArr[i-8], nodeInfoArr[i-7]]);
-      }
-    }
-    return clientArray;
+   public async _getNodeConnectInfoFromCluster(client: Client) {
+       console.log('in the _getNodeConnectInfoFromCluster function');
+        const nodes = await client.clusterNodes();
+        console.log
+        const nodeInfoArr = nodes.replace(/\n|@|:/g, " ").split(" ");
+        console.log(nodeInfoArr);
+        const clientArray = [];
+        for (let i = 0; i < nodeInfoArr.length; i++) {
+            if (nodeInfoArr[i] === "connected") {
+                console.log('in the for-loop of _getNodeConnectInfoFromCluster');
+                clientArray.push([nodeInfoArr[i-8], nodeInfoArr[i-7]]);
+            }
+        }
+        console.log(clientArray);
+        console.log('leaving the _getNodeConnectInfoFromCluster function');
+        return clientArray;
   }
 
   /**
@@ -168,6 +209,7 @@ export default class Redlock extends EventEmitter {
    */
    public async quit(): Promise<void> {
     const results = [];
+    console.log('in the quit function');
     for (const client of this.clients) {
       results.push(client.quit());
     }
@@ -185,10 +227,14 @@ export default class Redlock extends EventEmitter {
     if (Math.floor(duration) !== duration) {
       throw new Error("Duration must be an integer value in milliseconds.");
     }
-
+    console.log('in the acquire function');
     const start = performance.now();
+    console.log('start --> ', start);
     const value = this._random();
-
+    console.log('value: --> ', value);
+    console.log('arguments passed to this._execute: this.scripts.acquireScript --> ', this.scripts.acquireScript);
+    console.log('resources --> ', resources);
+    console.log('array of value and duration --> ', [value, duration]);
     try {
       const { attempts } = await this._execute(
         this.scripts.acquireScript,
@@ -203,6 +249,7 @@ export default class Redlock extends EventEmitter {
         Math.round(
           (settings?.driftFactor ?? this.settings.driftFactor) * duration
         ) + 2;
+        console.log('right before the return statement for the acquire function');
 
       return new Lock(
         this,
@@ -214,6 +261,7 @@ export default class Redlock extends EventEmitter {
     } catch (error) {
       // If there was an error acquiring the lock, release any partial lock
       // state that may exist on a minority of clients.
+      console.log('in the catch block of the acquire function');
       await this._execute(this.scripts.releaseScript, resources, [value], {
         retryCount: 0,
       }).catch(() => {
@@ -236,6 +284,7 @@ export default class Redlock extends EventEmitter {
   ): Promise<ExecutionResult> {
     // Immediately invalidate the lock.
     lock.expiration = 0;
+    console.log('in the release function');
 
     // Attempt to release the lock.
     return this._execute(
@@ -257,7 +306,7 @@ export default class Redlock extends EventEmitter {
     if (Math.floor(duration) !== duration) {
       throw new Error("Duration must be an integer value in milliseconds.");
     }
-
+    console.log('in the extend function');
     const start = performance.now();
 
     // The lock has already expired.
@@ -299,24 +348,29 @@ export default class Redlock extends EventEmitter {
     args: RedisValue[],
     _settings?: Partial<Settings>
   ): Promise<ExecutionResult> {
+      console.log('in the execute function');
     const settings = _settings
       ? {
           ...this.settings,
           ..._settings,
         }
       : this.settings;
+      console.log('settings after the ternary operator --> ', settings);
 
     // For the purpose of easy config serialization, we treat a retryCount of
     // -1 a equivalent to Infinity.
     const maxAttempts =
       settings.retryCount === -1 ? Infinity : settings.retryCount + 1;
+    console.log('maxAttempts --> ', maxAttempts);
 
     const attempts: Promise<ExecutionStats>[] = [];
-
     while (true) {
+        console.log('calling this._attemptOperation in the while loop of this._execute');
       const { vote, stats } = await this._attemptOperation(script, keys, args);
+      console.log(stats)
 
       attempts.push(stats);
+      console.log(attempts);
 
       // The operation achieved a quorum in favor.
       if (vote === "for") {
@@ -348,18 +402,65 @@ export default class Redlock extends EventEmitter {
   private async _attemptOperation(
     script: { value: string; hash: string },
     keys: string[],
-    args: RedisValue[]
+    args: RedisValue[],
   ): Promise<
     | { vote: "for"; stats: Promise<ExecutionStats> }
     | { vote: "against"; stats: Promise<ExecutionStats> }
   > {
-    return await new Promise((resolve) => {
-      const clientResults = [];
+      console.log('in the attemptOperation function');
+    return await new Promise(async (resolve) => {
+        console.log('in the return statement for attemptOperation');
+      const clientResults:ClientExecutionResult[] = [];
+      console.log('this.clients --> ', this.clients);
+    //   const clientArray = Array.from(this.clients);
+    //   console.log('clientArray --> ', clientArray);
+      //this is a problem, this is not iterating over the clients correctly
       for (const client of this.clients) {
-        clientResults.push(
-          this._attemptOperationOnClient(client, script, keys, args)
-        );
+           this._attemptOperationOnClient(client, script, keys, args).then(
+               data => {
+                   console.log(data);
+               }
+            );
       }
+
+    // async function f() {
+    //     let promise = new Promise((resolve, reject) => {
+    //         setTimeout(() => resolve("done!"), 1000)
+    //     });
+    //     let result = await promise; // wait until the promise resolves (*)
+    //     return await result;
+    // }
+    // const wait = f().then((data) => console.log(data));
+
+    const clientArr = Array.from(this.clients);
+    console.log('clientArr ==> ', clientArr);
+    console.log('script ==> ', script, ' keys ==> ', keys, ' args ==> ', args);
+    // for (let i = 0; i < clientArr.length; i++) {
+    //     this._attemptOperationOnClient(clientArr[i], script, keys, args).then((data) => {
+    //         clientResults.push(data);
+    //     })
+    // }
+    //   const clientSet = this.clients;
+    //   clientSet.forEach(function(item) {
+    //       clientResults.push(
+    //           this._attemptOperationOnClient(item, script, keys)
+    //       );
+    //   })
+        // const clientSet = this.clients;
+        // clientSet.forEach(el => {
+        //     clientResults.push(
+        //         this.attemptOperationOnClient(el, script, keys, args);
+        //     )
+        // })
+        const eachOp = await this._attemptOperationOnClient(clientArr[0], script, keys, args);
+        // const evalHash = await clientArr[0].evalsha(script.hash, keys, [
+        //     ...keys,
+        //     ...args,
+        //   ]);
+        // await console.log('evalHash ==> ', evalHash);
+
+        await clientResults.push(eachOp);
+      console.log('clientResults after calling this._attemptOperationOnClient on each client --> ', clientResults);
 
       const stats: ExecutionStats = {
         membershipSize: clientResults.length,
@@ -370,28 +471,34 @@ export default class Redlock extends EventEmitter {
 
       let done: () => void;
       const statsPromise = new Promise<typeof stats>((resolve) => {
+          console.log('in the statsPromise function');
         done = () => resolve(stats);
       });
-
+      console.log('LINE 397, out of the statsPromise function');
       // This is the expected flow for all successful and unsuccessful requests.
       const onResultResolve = (clientResult: ClientExecutionResult): void => {
+          console.log('LINE 400, in the onResultResolve function');
         switch (clientResult.vote) {
           case "for":
+              console.log('LINE 403, in the "for" switch statement for onResultResolve');
             stats.votesFor.add(clientResult.client);
             break;
           case "against":
+            console.log('in the "against" switch statement for onResultResolve');
             stats.votesAgainst.set(clientResult.client, clientResult.error);
             break;
         }
-
+        console.log('out of the onResultResolve function');
         // A quorum has determined a success.
+        console.log('checking votesFor size against quorumSize');
+        console.log('votesFor: ', stats.votesFor.size, 'quorumSize', stats.quorumSize);
         if (stats.votesFor.size === stats.quorumSize) {
           resolve({
             vote: "for",
             stats: statsPromise,
           });
         }
-
+        console.log('LINE 421, passed checking votesFor size === quorumSize');
         // A quorum has determined a failure.
         if (stats.votesAgainst.size === stats.quorumSize) {
           resolve({
@@ -399,7 +506,7 @@ export default class Redlock extends EventEmitter {
             stats: statsPromise,
           });
         }
-
+        console.log('passed checking votesAgainst size === quorumSize');
         // All votes are in.
         if (
           stats.votesFor.size + stats.votesAgainst.size ===
@@ -408,15 +515,20 @@ export default class Redlock extends EventEmitter {
           done();
         }
       };
-
+      console.log('votesFor: ', stats.votesFor.size, 'quorumSize', stats.quorumSize);
+      console.log('passed checking votesFor + votesAgainst === membershipSize');
       // This is unexpected and should crash to prevent undefined behavior.
       const onResultReject = (error: Error): void => {
         throw error;
       };
-
-      for (const result of clientResults) {
-        result.then(onResultResolve, onResultReject);
-      }
+      console.log('passed the function definition of onResultReject');
+    //   for (const result of clientResults) {
+    //       console.log('in the for-loop on  looking at ', result);
+    //     result.then(onResultResolve, onResultReject);
+    //   }
+      console.log(clientResults);
+      console.log('passed the for-loop looping through clientResults');
+      console.log('Then somehow it jumps all the way back up to LINE 160 and finishes executing _getNodeConnectInfoFromCluster');
     });
   }
 
@@ -426,10 +538,16 @@ export default class Redlock extends EventEmitter {
     keys: string[],
     args: RedisValue[]
   ): Promise<ClientExecutionResult> {
+      console.log('in the _attemptOperationOnClient function');
     try {
       let result: number;
       try {
         // Attempt to evaluate the script by its hash.
+        // had to change keys.length to keys on next line
+        // it threw an error, saying that we can't assign an argument of type number
+        // to a type of string[]
+        console.log('script.hash ==> ', script.hash, 'keys ==> ', keys, '...keys ==> ', ...keys, '...args ==> ', ...args);
+        console.log('HERE');
         const shaResult = (await client.evalsha(script.hash, keys, args)) as unknown;
 
         if (typeof shaResult !== "number") {
@@ -481,6 +599,7 @@ export default class Redlock extends EventEmitter {
 
       // Emit the error on the redlock instance for observability.
       this.emit("error", error);
+      console.log('final catch block of attemptOperationOnClient');
 
       return {
         vote: "against",
@@ -546,11 +665,12 @@ export default class Redlock extends EventEmitter {
       | ((signal: RedlockAbortSignal) => Promise<T>),
     optionalRoutine?: (signal: RedlockAbortSignal) => Promise<T>
   ): Promise<T> {
+    console.log('in the using function');
+    console.log('resouces --> ', resources, ' duration --> ', duration);
 
     if (Math.floor(duration) !== duration) {
       throw new Error("Duration must be an integer value in milliseconds.");
     }
-
     const settings =
       settingsOrRoutine && typeof settingsOrRoutine !== "function"
         ? {
@@ -558,6 +678,8 @@ export default class Redlock extends EventEmitter {
             ...settingsOrRoutine,
           }
         : this.settings;
+
+        console.log('settings --> ', settings);
 
     const routine = optionalRoutine ?? settingsOrRoutine;
     if (typeof routine !== "function") {
@@ -609,8 +731,10 @@ export default class Redlock extends EventEmitter {
 
     let timeout: undefined | number;
     let extension: undefined | Promise<void>;
-
+    console.log('right before the call to acquire in the using function');
+    console.log('arguments passed to acquire: resouces --> ', resources, ' duration --> ', duration, ' settings --> ', settings);
     let lock = await this.acquire(resources, duration, settings);
+    console.log('right after the call to acquire in the using function');
     queue();
 
     try {
