@@ -33,7 +33,7 @@ export default class Redlock extends EventEmitter {
     readonly extendScript: { value: string; hash: string };
     readonly releaseScript: { value: string; hash: string };
   };
-  public Ready: Promise<any> ;
+  private Ready: Promise<void> ;
 
   public constructor(
     clientOrCluster: Client,
@@ -139,8 +139,8 @@ export default class Redlock extends EventEmitter {
           const clientArray = [];
           for (let i = 0; i < nodeInfoArr.length; i++) {
               if (nodeInfoArr[i] === "connected") {
-                  console.log('in the for-loop of _getClientConnections');
-                  clientArray.push([nodeInfoArr[i-8], nodeInfoArr[i-7]]);
+                console.log('in the for-loop of _getClientConnections');
+                clientArray.push([nodeInfoArr[i-8], nodeInfoArr[i-7]]);
               }
           }
           //   console.log(clientArray)
@@ -155,21 +155,26 @@ export default class Redlock extends EventEmitter {
           }
           console.log('this.clients set: ', this.clients);
           console.log('leaving the try block of _getClientConnections function');
-          resolve(undefined)
+          resolve()
         })
         .catch(error => {
-          console.log('in the catch block of this.Ready, error: ', error);
+          console.log('in the catch block of this.Ready');
+          console.log(error.message);
+          if (!(error.message.startsWith('-ERR This instance has cluster support disabled'))) throw error
+
           this.clients.add(clientOrCluster);
           console.log('this.clients set: ', this.clients);
-          resolve(undefined);
-          })
+          clientOrCluster.info("server")
+            .then(nodeInfo => console.log(nodeInfo));
+          resolve();
+        })
       });
       // if error due to client not being a cluster, add single client instance to this.this.clients
       // catch (error) {
       //   console.log('in the catch block of _getClientConnections function, error: ', error);
       //   this.clients.add(clientOrCluster);
       //   console.log('this.clients set: ', this.clients);
-      //   // const nodeInfo = await clientOrCluster.info("server");
+        // const nodeInfo = await clientOrCluster.info("server");
       //   // console.log(nodeInfo);
       // }
   }
