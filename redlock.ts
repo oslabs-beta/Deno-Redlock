@@ -1,7 +1,7 @@
 // deno-lint-ignore-file
 import { EventEmitter, connect, Client, randomBytes, RedisValue } from './deps.ts';
 import { ACQUIRE_SCRIPT, EXTEND_SCRIPT, RELEASE_SCRIPT } from './scripts.ts';
-import { ClientExecutionResult, ExecutionStats, ExecutionResult, Settings, RedlockAbortSignal, Timeout } from './types.ts';
+import { ClientExecutionResult, ExecutionStats, ExecutionResult, Settings, RedlockAbortSignal, } from './types.ts';
 import { ResourceLockedError, ExecutionError } from './errors.ts'
 import { Lock } from './lock.ts';
 import { SHA1 } from './crypto.ts';
@@ -25,13 +25,15 @@ Object.freeze(defaultSettings);
  * consequences for live locks.
  */
 export default class Redlock extends EventEmitter {
+  // clients set is 
   public readonly clients: Set<Client>;
   public readonly settings: Settings;
   public readonly scripts: {
     readonly acquireScript: { value: string; hash: string };
-    readonly extendScript: { value: string; hash: string | string };
-    readonly releaseScript: { value: string; hash: string | string };
+    readonly extendScript: { value: string; hash: string };
+    readonly releaseScript: { value: string; hash: string };
   };
+  public Ready: Promise<any> ;
 
   public constructor(
     clientOrCluster: Client,
@@ -118,86 +120,141 @@ export default class Redlock extends EventEmitter {
         hash: SHA1(releaseScript),
       },
     };
-    console.log(clientOrCluster);
+    console.log("1", clientOrCluster);
     // add all redis cluster instances/single client to clients set
 
     // add all redis cluster instances/single client to clients set
-    console.log('creating a new Set');
+    // console.log('2 creating a new Set');
+    // this.clients = new Set();
+    // console.log('3 calling _getClientConnections');
+    // Promise.resolve(this._getClientConnections(clientOrCluster));
     this.clients = new Set();
-    console.log('calling _getClientConnections');
-    Promise.resolve(this._getClientConnections(clientOrCluster));
+    this.Ready = new Promise((resolve) => {
+      console.log('5 calling client.clusterNodes()');
+      clientOrCluster.clusterNodes()
+        .then(nodes => {
+          console.log("found cluster nodes in _getClientConnections")
+          const nodeInfoArr = nodes.replace(/\n|@|:/g, " ").split(" ");
+          console.log(nodeInfoArr);
+          const clientArray = [];
+          for (let i = 0; i < nodeInfoArr.length; i++) {
+              if (nodeInfoArr[i] === "connected") {
+                  console.log('in the for-loop of _getClientConnections');
+                  clientArray.push([nodeInfoArr[i-8], nodeInfoArr[i-7]]);
+              }
+          }
+          //   console.log(clientArray)
+          // const connectInfoArray: string[][] = await this._getNodeConnectInfoFromCluster(client);
+          // console.log('back in _getClientConnections, after finishing _getNodeConnectInfoFromCluster');
+          console.log(clientArray);
+          for (const [host, port] of clientArray) {
+            connect({hostname: host, port: Number(port)})
+              .then(client => {            
+                this.clients.add(client);
+              })
+          }
+          console.log('this.clients set: ', this.clients);
+          console.log('leaving the try block of _getClientConnections function');
+          resolve(undefined)
+        })
+        .catch(error => {
+          console.log('in the catch block of this.Ready, error: ', error);
+          this.clients.add(clientOrCluster);
+          console.log('this.clients set: ', this.clients);
+          resolve(undefined);
+          })
+      });
+      // if error due to client not being a cluster, add single client instance to this.this.clients
+      // catch (error) {
+      //   console.log('in the catch block of _getClientConnections function, error: ', error);
+      //   this.clients.add(clientOrCluster);
+      //   console.log('this.clients set: ', this.clients);
+      //   // const nodeInfo = await clientOrCluster.info("server");
+      //   // console.log(nodeInfo);
+      // }
   }
 
   /**
    * If constructed with a clustered redis instance,
    * this method establishes the redlock instance's connection to each redis client of the cluster
    */
-  public async _getClientConnections(client: Client): Promise<void> {
-      console.log('in _getClientConnections function');
-    try {
-        console.log('calling _getNodeConnectInfoFromCluster');
-      const connectInfoArray: string[][] = await this._getNodeConnectInfoFromCluster(client);
-      console.log('back in _getClientConnections, after finishing _getNodeConnectInfoFromCluster');
-      console.log(connectInfoArray);
-      for (const [host, port] of connectInfoArray) {
-        const client: Client = await connect({hostname: host, port: Number(port)});
-        this.clients.add(client);
-      }
-      console.log(this.clients);
-      console.log('leaving the try block of _getClientConnections function');
-    }
-    // if error due to client not being a cluster, add single client instance to this.clients
-    catch {
-        console.log('in the catch block of _getClientConnections function');
-        console.log(client);
-      this.clients.add(client);
-      console.log(this.clients);
-      const nodeInfo = await client.info();
-      await console.log(nodeInfo);
-      await this.acquire(["0705716cac11f0d533937b39e4bf13178089e9f9"], 5000, {
-        // The expected clock drift; for more details see:
-        // http://redis.io/topics/distlock
-        driftFactor: 0.01, // multiplied by lock ttl to determine drift time
+//   private async _getClientConnections(client: Client): Promise<void> {
+//       console.log('4 in _getClientConnections function');
+//     try {
+//       console.log('5 calling client.clusterNodes()');
+//       const nodes = await client.clusterNodes();
+//       console.log("found cluster nodes in _getClientConnections")
+//       const nodeInfoArr = nodes.replace(/\n|@|:/g, " ").split(" ");
+//       console.log(nodeInfoArr);
+//       const clientArray = [];
+//       for (let i = 0; i < nodeInfoArr.length; i++) {
+//           if (nodeInfoArr[i] === "connected") {
+//               console.log('in the for-loop of _getClientConnections');
+//               clientArray.push([nodeInfoArr[i-8], nodeInfoArr[i-7]]);
+//           }
+//       }
+//       //   console.log(clientArray)
+//       // const connectInfoArray: string[][] = await this._getNodeConnectInfoFromCluster(client);
+//       // console.log('back in _getClientConnections, after finishing _getNodeConnectInfoFromCluster');
+//       console.log(clientArray);
+//       for (const [host, port] of clientArray) {
+//         const client: Client = await connect({hostname: host, port: Number(port)});
+//         this.clients.add(client);
+//       }
+//       console.log('this.clients set: ', this.clients);
+//       console.log('leaving the try block of _getClientConnections function');
+//     }
+//     // if error due to client not being a cluster, add single client instance to this.this.clients
+//     catch (error) {
+//       console.log('in the catch block of _getClientConnections function, error: ', error);
+//       this.clients.add(client);
+//       console.log('this.clients set: ', this.clients);
+//       const nodeInfo = await client.info("server");
+//       console.log(nodeInfo);
+//       // await this.acquire(["bdc4076d8604a493c324292b57ed3c3f00797f8d"], 5000, {
+//       //   // The expected clock drift; for more details see:
+//       //   // http://redis.io/topics/distlock
+//       //   driftFactor: 0.01, // multiplied by lock ttl to determine drift time
     
-        // The max number of times Redlock will attempt to lock a resource
-        // before erroring.
-        retryCount: 10,
+//       //   // The max number of times Redlock will attempt to lock a resource
+//       //   // before erroring.
+//       //   retryCount: 10,
     
-        // the time in ms between attempts
-        retryDelay: 200, // time in ms
+//       //   // the time in ms between attempts
+//       //   retryDelay: 200, // time in ms
     
-        // the max time in ms randomly added to retries
-        // to improve performance under high contention
-        // see https://www.awsarchitectureblog.com/2015/03/backoff.html
-        retryJitter: 200, // time in ms
+//       //   // the max time in ms randomly added to retries
+//       //   // to improve performance under high contention
+//       //   // see https://www.awsarchitectureblog.com/2015/03/backoff.html
+//       //   retryJitter: 200, // time in ms
     
-        // The minimum remaining time on a lock before an extension is automatically
-        // attempted with the `using` API.
-        automaticExtensionThreshold: 500, // time in ms
-      });
-    }
- }
+//       //   // The minimum remaining time on a lock before an extension is automatically
+//       //   // attempted with the `using` API.
+//       //   automaticExtensionThreshold: 500, // time in ms
+//       // });
+//     }
+//  }
 
   /**
    * This method pulls hostname and port out of cluster connection info, returns error if client is not a cluster
   */
-   public async _getNodeConnectInfoFromCluster(client: Client) {
-       console.log('in the _getNodeConnectInfoFromCluster function');
-        const nodes = await client.clusterNodes();
-        console.log
-        const nodeInfoArr = nodes.replace(/\n|@|:/g, " ").split(" ");
-        console.log(nodeInfoArr);
-        const clientArray = [];
-        for (let i = 0; i < nodeInfoArr.length; i++) {
-            if (nodeInfoArr[i] === "connected") {
-                console.log('in the for-loop of _getNodeConnectInfoFromCluster');
-                clientArray.push([nodeInfoArr[i-8], nodeInfoArr[i-7]]);
-            }
-        }
-        console.log(clientArray);
-        console.log('leaving the _getNodeConnectInfoFromCluster function');
-        return clientArray;
-  }
+  //  private async _getNodeConnectInfoFromCluster(client: Client) {
+  //      console.log('in the _getNodeConnectInfoFromCluster function');
+  //       const nodes = await client.clusterNodes();
+  //       console.log("found cluster nodes in _getNodeConnectInfoFromCluster")
+  //       const nodeInfoArr = nodes.replace(/\n|@|:/g, " ").split(" ");
+  //       console.log(nodeInfoArr);
+  //       const clientArray = [];
+  //       for (let i = 0; i < nodeInfoArr.length; i++) {
+  //           if (nodeInfoArr[i] === "connected") {
+  //               console.log('in the for-loop of _getNodeConnectInfoFromCluster');
+  //               clientArray.push([nodeInfoArr[i-8], nodeInfoArr[i-7]]);
+  //           }
+  //       }
+  //       console.log(clientArray);
+  //       console.log('leaving the _getNodeConnectInfoFromCluster function');
+  //       return clientArray;
+  // }
 
   /**
    * Generate a cryptographically random string which will be lock value
@@ -229,6 +286,9 @@ export default class Redlock extends EventEmitter {
     if (Math.floor(duration) !== duration) {
       throw new Error("Duration must be an integer value in milliseconds.");
     }
+    // wait for all client connections to be populated
+    await this.Ready;
+    console.log('clients when first calling acquire after awaiting ready: ', this.clients)
     console.log('in the acquire function');
     const start = performance.now();
     console.log('start --> ', start);
