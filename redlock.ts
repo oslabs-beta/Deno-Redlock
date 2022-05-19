@@ -176,8 +176,8 @@ export default class Redlock extends EventEmitter {
       //   console.log('this.clients set: ', this.clients);
         // const nodeInfo = await clientOrCluster.info("server");
       //   // console.log(nodeInfo);
-      // }
-  }
+}     // }
+  
 
   /**
    * If constructed with a clustered redis instance,
@@ -309,7 +309,7 @@ export default class Redlock extends EventEmitter {
         [value, duration],
         settings
       );
-
+      console.log('back in acquire');
       // Add 2 milliseconds to the drift to account for Redis expires precision,
       // which is 1 ms, plus the configured allowable drift factor.
       const drift =
@@ -318,13 +318,15 @@ export default class Redlock extends EventEmitter {
         ) + 2;
         console.log('right before the return statement for the acquire function');
 
-      return new Lock(
+      const newLock = new Lock(
         this,
         resources,
         value,
         attempts,
         start + duration - drift
       );
+      console.log(newLock);
+      return newLock;
     } catch (error) {
       // If there was an error acquiring the lock, release any partial lock
       // state that may exist on a minority of clients.
@@ -434,10 +436,10 @@ export default class Redlock extends EventEmitter {
     while (true) {
         console.log('calling this._attemptOperation in the while loop of this._execute');
       const { vote, stats } = await this._attemptOperation(script, keys, args);
-      console.log(stats)
+      console.log('STATS ==> ', stats)
 
       attempts.push(stats);
-      console.log(attempts);
+      console.log('ATTEMPTS ==> ', attempts);
 
       // The operation achieved a quorum in favor.
       if (vote === "for") {
@@ -483,9 +485,9 @@ export default class Redlock extends EventEmitter {
     //   console.log('clientArray --> ', clientArray);
       //this is a problem, this is not iterating over the clients correctly
       for (const client of this.clients) {
-           this._attemptOperationOnClient(client, script, keys, args).then(
+           await this._attemptOperationOnClient(client, script, keys, args).then(
                data => {
-                   console.log(data);
+                   clientResults.push(data);
                }
             );
       }
@@ -499,9 +501,9 @@ export default class Redlock extends EventEmitter {
     // }
     // const wait = f().then((data) => console.log(data));
 
-    const clientArr = Array.from(this.clients);
-    console.log('clientArr ==> ', clientArr);
-    console.log('script ==> ', script, ' keys ==> ', keys, ' args ==> ', args);
+    // const clientArr = Array.from(this.clients);
+    // console.log('clientArr ==> ', clientArr);
+    // console.log('script ==> ', script, ' keys ==> ', keys, ' args ==> ', args);
     // for (let i = 0; i < clientArr.length; i++) {
     //     this._attemptOperationOnClient(clientArr[i], script, keys, args).then((data) => {
     //         clientResults.push(data);
@@ -527,8 +529,10 @@ export default class Redlock extends EventEmitter {
         // await console.log('evalHash ==> ', evalHash);
         // clientResults = [];
         // clientResults.push(eachOp);
-      console.log('clientResults after calling this._attemptOperationOnClient on client --> ', clientResults);
-
+      await console.log('clientResults after calling this._attemptOperationOnClient on client --> ', clientResults);
+      const newPromise = new Promise((resolve, reject) => {
+        
+      })
       const stats: ExecutionStats = {
         membershipSize: clientResults.length,
         quorumSize: Math.floor(clientResults.length / 2) + 1,
@@ -582,18 +586,19 @@ export default class Redlock extends EventEmitter {
           done();
         }
       };
-      console.log('votesFor: ', stats.votesFor.size, 'quorumSize', stats.quorumSize);
-      console.log('passed checking votesFor + votesAgainst === membershipSize');
+      await onResultResolve(clientResults[0]);
+      await console.log('votesFor: ', stats.votesFor.size, 'quorumSize', stats.quorumSize);
+      await console.log('passed checking votesFor + votesAgainst === membershipSize');
       // This is unexpected and should crash to prevent undefined behavior.
       const onResultReject = (error: Error): void => {
         throw error;
       };
       console.log('passed the function definition of onResultReject');
-    //   for (const result of clientResults) {
-    //       console.log('in the for-loop on  looking at ', result);
-    //     result.then(onResultResolve, onResultReject);
-    //   }
-      console.log(clientResults);
+      // for (const result of clientResults) {
+      //     console.log('in the for-loop on  looking at ', result);
+      //   result(onResultResolve, onResultReject);
+      // }
+      //console.log(clientResults);
       console.log('passed the for-loop looping through clientResults');
       console.log('Then somehow it jumps all the way back up to LINE 160 and finishes executing _getNodeConnectInfoFromCluster');
     });
