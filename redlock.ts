@@ -160,7 +160,9 @@ export default class Redlock extends EventEmitter {
           resolve();
         })
       });
+
   }
+
 
 
   /**
@@ -221,13 +223,7 @@ export default class Redlock extends EventEmitter {
         console.log('42 creating a new lock in the acquire function');
 
       // return new Lock(
-      const newLock = new Lock(
-        this,
-        resources,
-        value,
-        attempts,
-        start + duration - drift
-      );
+
       console.log('43 new lock being returned from successful acquire function: ', newLock)
       return newLock;
     } catch (error) {
@@ -347,6 +343,7 @@ export default class Redlock extends EventEmitter {
       attempts.push(stats);
       console.log('39 attempts after pushing stats into attempts: ', attempts);
 
+
       // The operation achieved a quorum in favor.
       if (vote === "for") {
         console.log('40 found vote "for" in execute, returning { attempts } and leaving execute func')
@@ -398,6 +395,44 @@ export default class Redlock extends EventEmitter {
         );
       }
       console.log('23 client results after for loop calling attemptOperationOnClient within attemptOperation: ', clientResults)
+
+    // async function f() {
+    //     let promise = new Promise((resolve, reject) => {
+    //         setTimeout(() => resolve("done!"), 1000)
+    //     });
+    //     let result = await promise; // wait until the promise resolves (*)
+    //     return await result;
+    // }
+    // const wait = f().then((data) => console.log(data));
+
+    // const clientArr = Array.from(this.clients);
+    // console.log('clientArr ==> ', clientArr);
+    // console.log('script ==> ', script, ' keys ==> ', keys, ' args ==> ', args);
+    // for (let i = 0; i < clientArr.length; i++) {
+    //     this._attemptOperationOnClient(clientArr[i], script, keys, args).then((data) => {
+    //         clientResults.push(data);
+    //     })
+    // }
+    //   const clientSet = this.clients;
+    //   clientSet.forEach(function(item) {
+    //       clientResults.push(
+    //           this._attemptOperationOnClient(item, script, keys)
+    //       );
+    //   })
+        // const clientSet = this.clients;
+        // clientSet.forEach(el => {
+        //     clientResults.push(
+        //         this.attemptOperationOnClient(el, script, keys, args);
+        //     )
+        // })
+        //const eachOp = await this._attemptOperationOnClient(clientArr[0], script, keys, args);
+        // const evalHash = await clientArr[0].evalsha(script.hash, keys, [
+        //     ...keys,
+        //     ...args,
+        //   ]);
+        // await console.log('evalHash ==> ', evalHash);
+        // clientResults = [];
+        // clientResults.push(eachOp);
 
       const stats: ExecutionStats = {
         membershipSize: clientResults.length,
@@ -461,6 +496,7 @@ export default class Redlock extends EventEmitter {
       const onResultReject = (error: Error): void => {
         throw error;
       };
+
       console.log('26 passed the function definitions of onResultResolve and Reject');
       for (const result of clientResults) {
         console.log('27 in the for-loop checking results of clientResults, current result: ', result);
