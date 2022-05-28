@@ -16,10 +16,10 @@ export class Lock {
     ) {}
 
     async release(): Promise<ExecutionResult> {
-      return this.redlock.release(this);
+      return await this.redlock.release(this);
     }
 
     async extend(duration: number): Promise<Lock> {
-      return this.redlock.extend(this, duration);
+      return await this.redlock.extend(this, duration);
     }
   }
