@@ -43,9 +43,3 @@ export interface Settings {
 
 // Redlock abort signal type definition
 export type RedlockAbortSignal = AbortSignal & { error?: Error };
-
-export type Timeout = (
-  cb: (...args: any[]) => void,
-  delay?: number,
-  ...args: any[]
-) => number;
