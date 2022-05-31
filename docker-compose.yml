@@ -1,0 +1,58 @@
+version: "3.8"
+
+volumes:
+  deno_cache:
+
+networks:
+  redis:
+    driver: bridge
+    ipam:
+      config:
+      # more research into subnet - do we need to 
+      # start at .0.11 and go to .16 or can we start at .0.1 and go to .8?
+        - subnet: 10.0.0.0/16
+
+services:
+  deps_cacher:
+    image: denoland/deno:ubuntu
+    working_dir: /app
+    environment:
+      - DENO_DIR=/app/deno_cache
+    volumes:
+      - .:/app
+      - deno_cache:/app/deno_cache
+    command: deno cache deps.ts
+    # command: deno cache /app/deps.ts
+  
+  builder:
+    depends_on:
+      - deps_cacher
+    image: denoland/deno:ubuntu
+    working_dir: /app
+    environment:
+      - DENO_DIR=/app/deno_cache
+    volumes:
+      - .:/app
+      - deno_cache:/app/deno_cache
+    entrypoint: #entrypoint ??
+    tty: true
+    command: # which image to build
+  
+  runner:
+    depends_on:
+      - builder
+      # - redis images used in testing
+    image: denoland/deno:ubunutu
+    working_dir: /app
+    environment:
+      - DENO_DIR=/app/deno_cache
+    volumes:
+      - .:/app
+      - deno_cache:/app/deno_cache
+    entrypoint: #entrypoint ??
+    tty: true
+    networks:
+      default:
+      redis:
+        ipv4_address: #ip address
+    command: # run tests

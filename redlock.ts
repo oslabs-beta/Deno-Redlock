@@ -19,8 +19,9 @@ const defaultSettings: Readonly<Settings> = {
 Object.freeze(defaultSettings);
 
 /**
- * A redlock object is instantiated with an array of at least one redis client
- * and an optional `options` object. Properties of the Redlock object should NOT
+ * A redlock object is instantiated with a Redis client or cluster
+ * of Redis clients and an optional `options` object.
+ * Properties of the Redlock object should NOT
  * be changed after it is first used, as doing so could have unintended
  * consequences for live locks.
  */
@@ -60,7 +61,7 @@ export default class Redlock extends EventEmitter {
       // an "error" event whenever it encounters an error, even if the error is
       // ignored in its normal operation.
       //
-      // This function serves to prevent node's default behavior of crashing
+      // This function serves to prevent Deno's default behavior of crashing
       // when an "error" event is emitted in the absence of listeners.
     });
     

@@ -18,7 +18,7 @@ RUN deno cache deps.ts
 # update files in working directory on file change
 ADD . .
 
-#Compile the main app starting at redlock.ts - everything else is imported/exported through it
+# Compile the main app starting at redlock.ts - everything else is imported/exported through it
 RUN deno cache redlock.ts
 
 # set command to run when docker image is started - "deno run --allow-net redlock.ts"

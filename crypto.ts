@@ -8,16 +8,7 @@ export const SHA1 = (msg: string): string => {
         const t4 = (n << s) | (n >>> (32 - s));
         return t4;
     }
-    // this function is not called and doesn't affect the SHA1 algorithm
-    // const lsb_hex = (val:number):string => {
-    //     let str = '';
-    //     for (let i = 0; i <= 6; i += 2) {
-    //         const vh = (val >>> (i * 4 + 4)) & 0x0f;
-    //         const vl = (val >>> (i * 4)) & 0x0f;
-    //         str += vh.toString(16) + vl.toString(16);
-    //     }
-    // return str;
-    // }
+
     // function to perform hex encoding
     const cvt_hex = (val: number): string => {
         let str='';
