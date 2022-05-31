@@ -2,6 +2,7 @@
 
 ## Description
 This is an implementation of the Redlock algorithm using Redis for distributed lock management. It is a secure, lightweight solution to control the access priority of multiple nodes in distributed system architecture.
+
 > Distributed locks are a very useful primitive in many environments where different processes require to operate  with shared resources in a mutually exclusive way.
 >
 > There are a number of libraries and blog posts describing how to implement a DLM (Distributed Lock Manager) with Redis, but every library uses a different approach, and many use a simple approach with lower guarantees compared to what can be achieved with slightly more complex designs.
@@ -9,10 +10,10 @@ This is an implementation of the Redlock algorithm using Redis for distributed l
 > https://redis.io/docs/reference/patterns/distributed-locks/
 
 ## Installation
-(Fill in steps on installation here)
+(Put our link to deno.land dependency import URL here)
 
 ## Documentation
-(Put our Docs website here)
+(Put our Docs website URL here)
 
 ## Configuration
 ```ts
@@ -36,6 +37,9 @@ await redlock.using(["resourceId"], 10000, async (signal) => {
   await anotherAction();
 });
 ```
+### A note about time:
+Deno-Redlock utilizes a monotonic time API to prevent errors due to random time jumps that are possible with a poorly maintained GPS time API
+
 
 ## Lock Usage
 
