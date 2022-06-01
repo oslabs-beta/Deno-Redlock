@@ -10,7 +10,7 @@ This is an implementation of the Redlock algorithm in Deno. It is a secure, ligh
 > https://redis.io/docs/reference/patterns/distributed-locks/
 
 ## Installation
-import Redlock from "https://deno.land/x/redlock/redlock.ts"
+import Redlock from "https://deno.land/x/redlock/mod.ts"
 
 ## Documentation
 (Put our Docs website URL here)
@@ -22,7 +22,7 @@ Do NOT change properties of the Redlock object after instantiation. Doing so cou
 
 ```ts
 import { connect } from "https://deno.land/x/redis/mod.ts"
-import Redlock from "https://deno.land/x/redlock/redlock.ts"
+import Redlock from "https://deno.land/x/redlock/mod.ts"
 
 const redisA = await connect({hostname: "HostIpAddress", port: portNumber})
 const redisB = await connect({hostname: "HostIpAddress", port: portNumber})
