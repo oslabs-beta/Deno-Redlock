@@ -2,7 +2,7 @@ import { EventEmitter, Client, randomBytes, RedisValue } from './deps.ts';
 import { ACQUIRE_SCRIPT, EXTEND_SCRIPT, RELEASE_SCRIPT } from './scripts.ts';
 import { ClientExecutionResult, ExecutionStats, ExecutionResult, Settings, RedlockAbortSignal, } from './types.ts';
 import { ResourceLockedError, ExecutionError } from './errors.ts'
-import { Lock } from './lock.ts';
+import Lock from './lock.ts';
 import { SHA1 } from './crypto.ts';
 
 // Define default settings.
