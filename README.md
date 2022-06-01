@@ -1,7 +1,7 @@
 # Deno-Redlock
 
 ## Description
-This is an implementation of the Redlock algorithm in Deno. It is a secure, lightweight solution to control the access priority of multiple resources in distributed system architecture.
+This is an implementation of the Redlock algorithm in Deno. It is a secure, lightweight solution to control the access priority of resources in distributed systems architecture.
 
 > Distributed locks are a very useful primitive in many environments where different processes require to operate  with shared resources in a mutually exclusive way.
 >
@@ -18,7 +18,7 @@ This is an implementation of the Redlock algorithm in Deno. It is a secure, ligh
 ## Configuration
 
 Instantiate a Redlock object by passing an array of at least one Redis client (for storing lock data) and an optional `options` object.
-Do not change properties of the Redlock object after instantiation. Doing so could have unintended consequences on live locks.
+Do NOT change properties of the Redlock object after instantiation. Doing so could have unintended consequences on live locks.
 
 ```ts
 import { connect } from "https://deno.land/x/redis/mod.ts"
@@ -125,7 +125,11 @@ redlock.on("error", (error) => {
 
 ## Disclaimer
 
-This code implements an algorithm which is currently a proposal, it was not formally analyzed. Make sure to understand how it works before using it in your production environments. 
+This code implements an algorithm which is currently a proposal and was not formally analyzed. Make sure to understand how it works before using it in your production environments.
+
+Martin Kleppmann's [analysis](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html)
+Salvatore Sanfilippo's [counterpoint](http://antirez.com/news/101) to this analysis
+
 
 #### A note about time:
 Redis and Deno-Redlock utilize a monotonic time API to prevent errors due to random time jumps that are possible with a poorly maintained GPS time API.
