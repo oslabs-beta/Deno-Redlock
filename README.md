@@ -133,6 +133,12 @@ See Martin Kleppmann's [analysis](https://martin.kleppmann.com/2016/02/08/how-to
 #### A note about time:
 Redis and Deno-Redlock utilize a monotonic time API to prevent errors due to random time jumps that are possible with a poorly maintained GPS time API.
 
+## The Development Team
+Cody Schexnider [LinkedIn](https://www.linkedin.com/in/cody-schexnider-2402701a3/) [GitHub](https://github.com/cdschexnide)
+Michael Watson [LinkedIn](https://www.linkedin.com/in/mdwatson988/) [GitHub](https://github.com/mdwatson988)
+Jiayi Zhang [LinkedIn](https://www.linkedin.com/in/jiayi-zhang-87819173/) [GitHub](https://github.com/onlinezyc)
+Anna Shen [LinkedIn](https://www.linkedin.com/in/ashen0426/) [GitHub](https://github.com/ashen0426)
+
 ## Contributing
 
 1. [Fork it](https://github.com/oslabs-beta/Deno-Redlock)
