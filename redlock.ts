@@ -1,7 +1,6 @@
-// deno-lint-ignore-file
-import { EventEmitter, connect, Client, randomBytes, RedisValue } from './deps.ts';
+import { EventEmitter, Client, randomBytes, RedisValue } from './deps.ts';
 import { ACQUIRE_SCRIPT, EXTEND_SCRIPT, RELEASE_SCRIPT } from './scripts.ts';
-import { ClientExecutionResult, ExecutionStats, ExecutionResult, Settings, RedlockAbortSignal } from './types.ts';
+import { ClientExecutionResult, ExecutionStats, ExecutionResult, Settings, RedlockAbortSignal, } from './types.ts';
 import { ResourceLockedError, ExecutionError } from './errors.ts'
 import { Lock } from './lock.ts';
 import { SHA1 } from './crypto.ts';
@@ -19,24 +18,22 @@ const defaultSettings: Readonly<Settings> = {
 Object.freeze(defaultSettings);
 
 /**
- * A redlock object is instantiated with a Redis client or cluster
- * of Redis clients and an optional `options` object.
- * Properties of the Redlock object should NOT
+ * A redlock object is instantiated with an array of at least one redis client
+ * and an optional `options` object. Properties of the Redlock object should NOT
  * be changed after it is first used, as doing so could have unintended
  * consequences for live locks.
  */
 export default class Redlock extends EventEmitter {
   public readonly clients: Set<Client>;
-  private readonly Ready: Promise<void>;
   public readonly settings: Settings;
   public readonly scripts: {
     readonly acquireScript: { value: string; hash: string };
-    readonly extendScript: { value: string; hash: string | string };
-    readonly releaseScript: { value: string; hash: string | string };
+    readonly extendScript: { value: string; hash: string };
+    readonly releaseScript: { value: string; hash: string };
   };
 
   public constructor(
-    clientOrCluster: Client,
+    clients: Iterable<Client>,
     settings: Partial<Settings> = {},
     scripts: {
       readonly acquireScript?: string | ((script: string) => string);
@@ -45,12 +42,6 @@ export default class Redlock extends EventEmitter {
     } = {}
   ) {
     super();
-
-    if (!clientOrCluster) {
-      throw new Error(
-        "Redlock must be instantiated with at least one redis client."
-      );
-    }
 
     // Prevent crashes on error events.
     this.on("error", () => {
@@ -64,36 +55,6 @@ export default class Redlock extends EventEmitter {
       // This function serves to prevent Deno's default behavior of crashing
       // when an "error" event is emitted in the absence of listeners.
     });
-    
-    this.clients = new Set();
-
-    /**
-     * Await this promise resolution to establish connection
-     * to all Redis instances in a cluster prior to acquiring lock
-     */
-    this.Ready = new Promise(async (resolve) => {
-      try {
-        const nodes = await clientOrCluster.clusterNodes();
-        const nodeInfoArr = nodes.replace(/\n|@|:/g, " ").split(" ");
-        for (let i = 0; i < nodeInfoArr.length; i++) {
-          if (nodeInfoArr[i] === "connected") {
-            const client = await connect(
-              {hostname: nodeInfoArr[i - 8], port: Number(nodeInfoArr[i - 7])}
-            )
-            this.clients.add(client);
-          }
-        }
-      }
-      catch (error) {
-        if (!(error.message.startsWith('-ERR This instance has cluster support disabled'))) {
-          throw error
-        }
-        this.clients.add(clientOrCluster);
-      }
-      finally {
-        resolve()
-      }
-    })
 
     // Customize the settings for this instance. Use default settings or user provided settings
     this.settings = {
@@ -133,9 +94,10 @@ export default class Redlock extends EventEmitter {
         ? scripts.releaseScript(RELEASE_SCRIPT)
         : RELEASE_SCRIPT;
 
-    // set script value and hashed sha1 digest of script values 
-    // the value will be used in initial EVAL call to Redis instances
-    // the hashed values will be called in subsequent EVALSHA calls to used cached script string
+    /**
+     * Script value will be used in initial EVAL call to Redis nodes
+     * Hash will be used in subsequent EVALSHA calls to nodes
+     */
     this.scripts = {
       acquireScript: {
         value: acquireScript,
@@ -150,7 +112,14 @@ export default class Redlock extends EventEmitter {
         hash: SHA1(releaseScript),
       },
     };
-  };
+
+    this.clients = new Set(clients);
+    if (this.clients.size === 0) {
+      throw new Error(
+        "Redlock must be instantiated with at least one Redis client."
+      );
+    }
+  }
 
   /**
    * Generate a cryptographically random string which will be lock value
@@ -171,7 +140,8 @@ export default class Redlock extends EventEmitter {
   }
 
   /**
-   * This method acquires a locks on the resources for the duration specified by the `duration` setting
+   * This method acquires locks on the specified resources
+   * for the duration specified by the `duration` setting
    */
    public async acquire(
     resources: string[],
@@ -181,12 +151,9 @@ export default class Redlock extends EventEmitter {
     if (Math.floor(duration) !== duration) {
       throw new Error("Duration must be an integer value in milliseconds.");
     }
-
-    // await construction of Redis client connections
-    await this.Ready;
-
     const start = performance.now();
     const value = this._random();
+
     try {
       const { attempts } = await this._execute(
         this.scripts.acquireScript,
@@ -208,7 +175,7 @@ export default class Redlock extends EventEmitter {
         value,
         attempts,
         start + duration - drift
-      );
+      )
     } catch (error) {
       // If there was an error acquiring the lock, release any partial lock
       // state that may exist on a minority of clients.
@@ -221,7 +188,6 @@ export default class Redlock extends EventEmitter {
       throw error;
     }
   }
-
   /**
  * This method unlocks the provided lock from all servers still persisting it.
  * It will fail with an error if it is unable to release the lock on a quorum
@@ -287,10 +253,16 @@ export default class Redlock extends EventEmitter {
       attempts,
       start + duration - drift
     );
-
     return replacement;
   }
 
+  /*
+ * This method returns a summary of results. Because the result of an attempt
+ * can sometimes be determined before all requests are finished, each attempt
+ * contains a Promise that will resolve ExecutionStats once all requests are
+ * finished. A rejection of these promises should be considered undefined
+ * behavior and should cause a crash.
+ */
   private async _execute(
     script: { value: string; hash: string },
     keys: string[],
@@ -305,12 +277,11 @@ export default class Redlock extends EventEmitter {
       : this.settings;
 
     // For the purpose of easy config serialization, we treat a retryCount of
-    // -1 a equivalent to Infinity.
+    // -1 as equivalent to Infinity.
     const maxAttempts =
       settings.retryCount === -1 ? Infinity : settings.retryCount + 1;
 
     const attempts: Promise<ExecutionStats>[] = [];
-
     while (true) {
       const { vote, stats } = await this._attemptOperation(script, keys, args);
       attempts.push(stats);
@@ -350,14 +321,15 @@ export default class Redlock extends EventEmitter {
     | { vote: "for"; stats: Promise<ExecutionStats> }
     | { vote: "against"; stats: Promise<ExecutionStats> }
   > {
-    return await new Promise(async (resolve) => {
+    return await new Promise((resolve) => {
       const clientResults: Promise<ClientExecutionResult>[] = [];
       for (const client of this.clients) {
-        clientResults.push(
+        clientResults.push(   
           this._attemptOperationOnClient(client, script, keys, args)
         );
       }
 
+      // This object contains a summary of results.
       const stats: ExecutionStats = {
         membershipSize: clientResults.length,
         quorumSize: Math.floor(clientResults.length / 2) + 1,
@@ -366,7 +338,7 @@ export default class Redlock extends EventEmitter {
       };
 
       let done: () => void;
-      const statsPromise = new Promise<typeof stats>((resolve) => {
+      const statsPromise = new Promise<ExecutionStats>((resolve) => {
         done = () => resolve(stats);
       });
 
@@ -380,7 +352,6 @@ export default class Redlock extends EventEmitter {
             stats.votesAgainst.set(clientResult.client, clientResult.error);
             break;
         }
-
         // A quorum has determined a success.
         if (stats.votesFor.size === stats.quorumSize) {
           resolve({
@@ -388,7 +359,6 @@ export default class Redlock extends EventEmitter {
             stats: statsPromise,
           });
         }
-
         // A quorum has determined a failure.
         if (stats.votesAgainst.size === stats.quorumSize) {
           resolve({
@@ -396,7 +366,6 @@ export default class Redlock extends EventEmitter {
             stats: statsPromise,
           });
         }
-
         // All votes are in.
         if (
           stats.votesFor.size + stats.votesAgainst.size ===
@@ -405,13 +374,11 @@ export default class Redlock extends EventEmitter {
           done();
         }
       };
-
       // This is unexpected and should crash to prevent undefined behavior.
       const onResultReject = (error: Error): void => {
         throw error;
       };
 
-      // Resolve ClientExecutionResult promises
       for (const result of clientResults) {
         result.then(onResultResolve, onResultReject);
       }
@@ -427,7 +394,7 @@ export default class Redlock extends EventEmitter {
     try {
       let result: number;
       try {
-        const shaResult = (await client.evalsha(script.hash, keys, args)) as unknown;
+        const shaResult = await client.evalsha(script.hash, keys, args) as unknown;
 
         if (typeof shaResult !== "number") {
           throw new Error(
@@ -474,11 +441,8 @@ export default class Redlock extends EventEmitter {
           `Unexpected type ${typeof error} thrown with value: ${error}`
         );
       }
-
       // Emit the error on the redlock instance for observability.
       this.emit("error", error);
-      console.log('final catch block of attemptOperationOnClient');
-
       return {
         vote: "against",
         client,
@@ -488,39 +452,12 @@ export default class Redlock extends EventEmitter {
   }
 
   /**
-   * Wrap and execute a routine in the context of an auto-extending lock,
-   * returning a promise of the routine's value. In the case that auto-extension
-   * fails, an AbortSignal will be updated to indicate that abortion of the
-   * routine is in order, and to pass along the encountered error.
-   *
-   * @example
-   * ```ts
-   * await redlock.using([senderId, recipientId], 5000, { retryCount: 5 }, async (signal) => {
-   *   const senderBalance = await getBalance(senderId);
-   *   const recipientBalance = await getBalance(recipientId);
-   *
-   *   if (senderBalance < amountToSend) {
-   *     throw new Error("Insufficient balance.");
-   *   }
-   *
-   *   // The abort signal will be true if:
-   *   // 1. the above took long enough that the lock needed to be extended
-   *   // 2. redlock was unable to extend the lock
-   *   //
-   *   // In such a case, exclusivity can no longer be guaranteed for further
-   *   // operations, and should be handled as an exceptional case.
-   *   if (signal.aborted) {
-   *     throw signal.error;
-   *   }
-   *
-   *   await setBalances([
-   *     {id: senderId, balance: senderBalance - amountToSend},
-   *     {id: recipientId, balance: recipientBalance + amountToSend},
-   *   ]);
-   * });
-   * ```
+   * 
+   * @param resources the redis client ID
+   * @param duration 
+   * @param settings optional settings
+   * @param routine the callback function which uses/manipulates information on the redis client while lock is in place
    */
-
    public async using<T>(
     resources: string[],
     duration: number,
@@ -543,10 +480,10 @@ export default class Redlock extends EventEmitter {
       | ((signal: RedlockAbortSignal) => Promise<T>),
     optionalRoutine?: (signal: RedlockAbortSignal) => Promise<T>
   ): Promise<T> {
+
     if (Math.floor(duration) !== duration) {
       throw new Error("Duration must be an integer value in milliseconds.");
     }
-
     const settings =
       settingsOrRoutine && typeof settingsOrRoutine !== "function"
         ? {
@@ -570,6 +507,7 @@ export default class Redlock extends EventEmitter {
     // of a failure to extend the lock, and subsequent expiration. In the event
     // of an abort, the error object will be made available at `signal.error`.
     const controller = new AbortController();
+
     const signal = controller.signal as RedlockAbortSignal;
 
     function queue(): void {
@@ -581,7 +519,6 @@ export default class Redlock extends EventEmitter {
 
     async function extend(): Promise<void> {
       timeout = undefined;
-
       try {
         lock = await lock.extend(duration);
         queue();
@@ -601,7 +538,6 @@ export default class Redlock extends EventEmitter {
 
     let timeout: undefined | number;
     let extension: undefined | Promise<void>;
-    
     let lock = await this.acquire(resources, duration, settings);
     queue();
 
@@ -623,7 +559,6 @@ export default class Redlock extends EventEmitter {
           // between the extension and release.
         });
       }
-
       await lock.release();
     }
   }
