@@ -139,5 +139,5 @@ Redis and Deno-Redlock utilize a monotonic time API to prevent errors due to ran
 5. Create a new Pull Request
 
 
-### Credit
+## Credit
 Big thanks to [Mike Marcacci](https://github.com/mike-marcacci) for the [Node.js implementation](https://github.com/mike-marcacci/node-redlock) of the Redlock algorithm.
