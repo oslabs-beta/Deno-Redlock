@@ -44,8 +44,6 @@ The `using` method allows a routine to be executed within the context of an auto
 
 The first parameter represents an array of resources that one wishes to lock. The second parameter is the desired lock duration in milliseconds (given as an integer).
 
-### A note about time:
-Deno-Redlock utilizes a monotonic time API to prevent errors due to random time jumps that are possible with a poorly maintained GPS time API
 
 
 ```ts
@@ -86,6 +84,9 @@ try {
 ## Disclaimer
 
 This code implements an algorithm which is currently a proposal, it was not formally analyzed. Make sure to understand how it works before using it in your production environments. 
+
+### A note about time:
+Deno-Redlock utilizes a monotonic time API to prevent errors due to random time jumps that are possible with a poorly maintained GPS time API
 
 ## Contributing
 
