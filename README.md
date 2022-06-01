@@ -62,8 +62,6 @@ The `using` method allows a routine to be executed within the context of an auto
 
 The first parameter represents an array of resources that one wishes to lock. The second parameter is the desired lock duration in milliseconds (given as an integer).
 
-Note: commands are executed in a single call to Redis. Redis clusters require that all keys in a command must hash to the same node. When acquiring a lock on multiple resources while using Redis clusters, [redis hash tags](https://redis.io/docs/reference/cluster-spec/) must be used to ensure that all keys are allocated in the same hash slot. The most straightforward strategy is to use a single generic prefix inside hash tags before listing the resource, such as `{redlock}resourceId`. This ensures that all lock keys resolve to the same node and may be appropriate when the cluster storing the lock data has additional purposes. When all resources share a common attribute (such as organizationId), this attribute can be used inside the hash tags for better key distribution and cluster utilization. If you do not need to lock multiple resources at the same time or are not using clusters, omit the hash tags to achieve ideal utilization.
-
 ```ts
 await redlock.using(["{redlock}resourceId", "{redlock}resourceId2"], 10000, async (signal) => {
   // perform some action using the locked resources...
@@ -107,6 +105,8 @@ try {
   await lock.release();
 }
 ```
+
+Note: commands are executed in a single call to Redis. Redis clusters require that all keys in a command must hash to the same node. When acquiring a lock on multiple resources while using Redis clusters, [redis hash tags](https://redis.io/docs/reference/cluster-spec/) must be used to ensure that all keys are allocated in the same hash slot. The most straightforward strategy is to use a single generic prefix inside hash tags before listing the resource, such as `{redlock}resourceId`. This ensures that all lock keys resolve to the same node and may be appropriate when the cluster storing the lock data has additional purposes. When all resources share a common attribute (such as organizationId), this attribute can be used inside the hash tags for better key distribution and cluster utilization. If you do not need to lock multiple resources at the same time or are not using clusters, omit the hash tags to achieve ideal utilization.
 
 ## Error Handling
 Redlock is designed for high availability and doesn't care if a minority of Redis instances/clusters fail at an operation. However, it may be helpful to monitor or log normal usage errors. A per-attempt and per-client stats object (including errors) is made available on the `attempts` property of both the `Lock` and `ExecutionError` classes. Additionally, Redlock emits an "error" event whenever an error is encountered, even if the error is ignored and normal operation continues.
