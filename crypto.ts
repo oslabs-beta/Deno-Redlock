@@ -1,7 +1,4 @@
 // SHA1 cryptographic function
-// Bitwise operators: |, &, <<, >>, <<<, >>>
-    // these treat the operands like 32 bit binary digits
-    // then they do binary operations on those operands
 export const SHA1 = (msg: string): string => {
     // function that performs left and right shift binary operations
     const rotate_left = (n: number, s: number): number => {

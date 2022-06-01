@@ -6,7 +6,7 @@ import Redlock from './redlock.ts'
  * contains convenience methods `release` and `extend` which perform the
  * associated Redlock method on itself.
  */
-export class Lock {
+export default class Lock {
     constructor(
       public readonly redlock: Redlock,
       public readonly resources: string[],
