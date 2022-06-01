@@ -127,7 +127,7 @@ redlock.on("error", (error) => {
 
 This code implements an algorithm which is currently a proposal and was not formally analyzed. Make sure to understand how it works before using it in your production environments.
 
-Martin Kleppmann's [analysis](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html)
+Martin Kleppmann's [analysis](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html)\n
 Salvatore Sanfilippo's [counterpoint](http://antirez.com/news/101) to this analysis
 
 
