@@ -1,8 +1,8 @@
-import { ResourceLockedError, ExecutionError } from './errors.ts'
-import Redlock from './redlock.ts'
+import { ResourceLockedError, ExecutionError } from '../errors.ts'
+import Redlock from '../redlock.ts'
 import { assert, assertNotEquals, fail } from "https://deno.land/std@0.141.0/testing/asserts.ts"
 import { assertEquals } from "https://deno.land/std@0.141.0/testing/asserts.ts";
-import { connect } from "https://deno.land/x/redis@v0.25.5/mod.ts";
+import { connect } from "../deps.ts";
 
 interface TestStepDefinition {
     fn: (t: TestContext) => void | Promise<void>;
@@ -25,7 +25,7 @@ const redis = await connect({hostname: "127.0.0.1", port: 6379});
 
 Deno.test("acquires, extends, and releases a lock with a single resource", async (t) => {
     try {
-        const redlock = new Redlock(redis);
+        const redlock = new Redlock([redis]);
         const duration = Math.floor(Number.MAX_SAFE_INTEGER / 10);
 
         // acquire the lock
@@ -46,7 +46,7 @@ Deno.test("acquires, extends, and releases a lock with a single resource", async
 
 Deno.test("acquires, extends, and releases a multi-resource lock", async (t) => {
     try {
-        const redlock = new Redlock(redis);
+        const redlock = new Redlock([redis]);
         const duration = Math.floor(Number.MAX_SAFE_INTEGER / 10);
 
         // acquire the lock
@@ -73,7 +73,7 @@ Deno.test("if communication with Redis goes down, the lock fails", async (t) => 
         // redis.on("error", () => {
         //     // ignore redis-generated errors
         //   });
-        const redlock = new Redlock(redis);
+        const redlock = new Redlock([redis]);
         const duration = Math.floor(Number.MAX_SAFE_INTEGER / 10);
         try {
             await redlock.acquire(["{redlock}b"], duration);
@@ -99,7 +99,7 @@ Deno.test("if communication with Redis goes down, the lock fails", async (t) => 
 
 Deno.test("automatic expiration for locks", async (t) => {
     try {
-        const redlock = new Redlock(redis);
+        const redlock = new Redlock([redis]);
         const duration = 200;
         const lock = await redlock.acquire(["{redlock}d"], duration);
         assertEquals(await redis.get("{redlock}d"),  lock.value, "lock value incorrect");
@@ -121,7 +121,7 @@ Deno.test("automatic expiration for locks", async (t) => {
 
 Deno.test("locks are exclusive", async (t) => {
     try {
-        const redlock = new Redlock(redis);
+        const redlock = new Redlock([redis]);
         const duration = Math.floor(Number.MAX_SAFE_INTEGER / 10);
 
         // Acquire a lock.
@@ -158,7 +158,7 @@ Deno.test("locks are exclusive", async (t) => {
 Deno.test("overlapping multi-locks are exclusive", async (t) => {
     try {
         const redis = await connect({hostname: "127.0.0.1", port: 6379});
-        const redlock = new Redlock(redis);
+        const redlock = new Redlock([redis]);
         const duration = Math.floor(Number.MAX_SAFE_INTEGER / 10);
         // Acquire a lock.
         const lock = await redlock.acquire(["{redlock}c1", "{redlock}c2"], duration);
@@ -200,7 +200,7 @@ Deno.test("overlapping multi-locks are exclusive", async (t) => {
 Deno.test("the using helper acquires, extends, and releases locks", async (t) => {
     try {
         const redis = await connect({hostname: "127.0.0.1", port: 6379});
-        const redlock = new Redlock(redis);
+        const redlock = new Redlock([redis]);
         const duration = 500;
         const valueP = redlock.using(["{redlock}x"], duration, 
             { automaticExtensionThreshold: 200 },
@@ -227,7 +227,7 @@ Deno.test("the using helper acquires, extends, and releases locks", async (t) =>
 
 Deno.test("the using helper is exclusive", async (t) => {
     try {
-        const redlock = new Redlock(redis);
+        const redlock = new Redlock([redis]);
         const duration = 500;
         let locked = false;
         const [lock1, lock2] = await Promise.all([await redlock.using(["{redlock}y"], duration,
@@ -276,7 +276,7 @@ Deno.test("the using helper is exclusive", async (t) => {
 
 Deno.test("the using helper is exclusive", async (t) => {
     try {
-        const redlock = new Redlock(redis);
+        const redlock = new Redlock([redis]);
         const duration = 500;
         let locked = false;
         const [lock1, lock2] = await Promise.all([

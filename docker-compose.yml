@@ -1,0 +1,140 @@
+version: "3.8"
+
+volumes:
+  deno_cache:
+
+networks:
+  redis:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/16
+
+services:
+  redis-single-instance:
+    image: redis
+
+  redis-single-cluster-1:
+    image: redis
+    command: redis-server /etc/redis/redis.conf
+    volumes:
+      - type: bind
+        source: ./test/cluster.redis.conf
+        target: /etc/redis/redis.conf
+    networks:
+      redis:
+        ipv4_address: 10.0.0.11
+  redis-single-cluster-2:
+    image: redis
+    command: redis-server /etc/redis/redis.conf
+    volumes:
+      - type: bind
+        source: ./test/cluster.redis.conf
+        target: /etc/redis/redis.conf
+    networks:
+      redis:
+        ipv4_address: 10.0.0.12
+  redis-single-cluster-3:
+    image: redis
+    command: redis-server /etc/redis/redis.conf
+    volumes:
+      - type: bind
+        source: ./test/cluster.redis.conf
+        target: /etc/redis/redis.conf
+    networks:
+      redis:
+        ipv4_address: 10.0.0.13
+  redis-single-cluster-4:
+    image: redis
+    command: redis-server /etc/redis/redis.conf
+    volumes:
+      - type: bind
+        source: ./test/cluster.redis.conf
+        target: /etc/redis/redis.conf
+    networks:
+      redis:
+        ipv4_address: 10.0.0.14
+  redis-single-cluster-5:
+    image: redis
+    command: redis-server /etc/redis/redis.conf
+    volumes:
+      - type: bind
+        source: ./test/cluster.redis.conf
+        target: /etc/redis/redis.conf
+    networks:
+      redis:
+        ipv4_address: 10.0.0.15
+  redis-single-cluster-6:
+    image: redis
+    command: redis-server /etc/redis/redis.conf
+    volumes:
+      - type: bind
+        source: ./test/cluster.redis.conf
+        target: /etc/redis/redis.conf
+    networks:
+      redis:
+        ipv4_address: 10.0.0.16
+  redis-single-cluster:
+    image: redis
+    command: redis-cli -p 6379 --cluster create 10.0.0.11:6379 10.0.0.12:6379 10.0.0.13:6379 10.0.0.14:6379 10.0.0.14:6379 10.0.0.16:6379 --cluster-replicas 1 --cluster-yes
+    depends_on:
+      - redis-single-cluster-1
+      - redis-single-cluster-2
+      - redis-single-cluster-3
+      - redis-single-cluster-4
+      - redis-single-cluster-5
+      - redis-single-cluster-6
+    networks:
+      redis:
+        ipv4_address: 10.0.0.2
+
+  deps_cacher:
+    image: denoland/deno:ubuntu
+    working_dir: /app
+    environment:
+      - DENO_DIR=/app/deno_cache
+    volumes:
+      - .:/app
+      - deno_cache:/app/deno_cache
+    command: deno cache deps.ts
+    # command: deno cache /app/deps.ts
+  
+  builder:
+    depends_on:
+      - deps_cacher
+    image: denoland/deno:ubuntu
+    working_dir: /app
+    environment:
+      - DENO_DIR=/app/deno_cache
+    volumes:
+      - .:/app
+      - deno_cache:/app/deno_cache
+    entrypoint: #entrypoint ??
+    tty: true
+    command: # which image to build
+  
+  runner:
+    depends_on:
+      - builder
+      - redis-single-instance
+      - redis-single-cluster-1
+      - redis-single-cluster-2
+      - redis-single-cluster-3
+      - redis-single-cluster-4
+      - redis-single-cluster-5
+      - redis-single-cluster-6
+      - redis-single-cluster
+    image: denoland/deno:ubunutu
+    working_dir: /app
+    environment:
+      - DENO_DIR=/app/deno_cache
+    volumes:
+      - .:/app
+      - deno_cache:/app/deno_cache
+    entrypoint: #entrypoint ??
+    tty: true
+    networks:
+      default:
+      redis:
+        ipv4_address: 10.0.10.3
+    command: # run tests
