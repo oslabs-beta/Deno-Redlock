@@ -25,7 +25,7 @@ const redis = await connect({hostname: "HostIpAddress", port: portNumber})
 const redlock = new Redlock(redis);
 
 await redlock.using(["resourceId"], 10000, async (signal) => {
-  // perform some action...
+  // do something with the locked resource
   await action();
 
   // verify that a lock extension attempt has not failed
@@ -33,7 +33,7 @@ await redlock.using(["resourceId"], 10000, async (signal) => {
     throw signal.error;
   }
 
-  // perform another action...
+  // perform another action with the resource...
   await anotherAction();
 });
 ```
@@ -48,7 +48,7 @@ The first parameter represents an array of resources that one wishes to lock. Th
 
 ```ts
 await redlock.using(["exampleResourceId"], 10000, async (signal) => {
-  // perform some action...
+  // perform some action using the locked resource...
   await action();
 
   // verify that the auto-extension process has not failed
@@ -67,7 +67,7 @@ Locks can also be acquired, extended, and released manually
 // acquisition
 let lock = await redlock.acquire(["exampleResourceId"], 10000);
 try {
-  // perform some action...
+  // perform some action with locked resource...
   await action();
 
   // extension, which instantiates a new Lock
@@ -86,7 +86,7 @@ try {
 This code implements an algorithm which is currently a proposal, it was not formally analyzed. Make sure to understand how it works before using it in your production environments. 
 
 ### A note about time:
-Deno-Redlock utilizes a monotonic time API to prevent errors due to random time jumps that are possible with a poorly maintained GPS time API
+Deno-Redlock utilizes a monotonic time API to prevent errors due to random time jumps that are possible with a poorly maintained GPS time API.
 
 ## Contributing
 
@@ -95,22 +95,3 @@ Deno-Redlock utilizes a monotonic time API to prevent errors due to random time 
 3. Commit your changes (`git commit -am 'feature-added'`)
 4. Push to the branch (`git push origin your-new-feature`)
 5. Create a new Pull Request
-
-## License
-Distributed under the MIT License.
-Copyright (c) 2022 OSLabs Beta
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and 
-associated documentation files (the "Software"), to deal in the Software without restriction, including 
-without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell 
-copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the 
-following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial 
-portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT 
-LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO 
-EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
-ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
-DEALINGS IN THE SOFTWARE.
