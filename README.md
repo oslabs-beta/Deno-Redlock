@@ -17,7 +17,7 @@ This is an implementation of the Redlock algorithm in Deno. It is a secure, ligh
 
 ## Configuration
 ```ts
-import { connect } from "./deps.ts"
+import { connect } from "https://deno.land/x/redis/mod.ts"
 import Redlock from './redlock.ts'
 
 const redis = await connect({hostname: "HostIpAddress", port: portNumber})
