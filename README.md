@@ -1,7 +1,7 @@
 # Deno-Redlock
 
 ## Description
-This is an implementation of the Redlock algorithm in Deno. It is a secure, lightweight solution to control resource access priority in distributed systems architecture.
+This is an implementation of the Redlock algorithm in Deno. It is a secure, lightweight solution to control resource access in distributed systems architecture.
 
 > Distributed locks are a very useful primitive in many environments where different processes require to operate  with shared resources in a mutually exclusive way.
 >
