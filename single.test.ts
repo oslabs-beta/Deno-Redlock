@@ -24,7 +24,6 @@ interface TestContext {
 
 const redis = await connect({hostname: "127.0.0.1", port: 6379});
 
-// PASSED
 Deno.test("acquires, extends, and releases a lock with a single resource", async (t) => {
     try {
         await redis
@@ -54,7 +53,6 @@ Deno.test("acquires, extends, and releases a lock with a single resource", async
       }
 });
 
-// PASSED
 Deno.test("acquires, extends, and releases a multi-resource lock", async (t) => {
     try {
         await redis
@@ -87,8 +85,7 @@ Deno.test("acquires, extends, and releases a multi-resource lock", async (t) => 
 });
 
 
-// PASSED
-Deno.test("locks fail when redis is unreachable", async (t) => {
+Deno.test("if communication with Redis goes down, the lock fails", async (t) => {
     try {
         await redis
         .keys("*")
@@ -123,7 +120,6 @@ Deno.test("locks fail when redis is unreachable", async (t) => {
     }
 });
 
-// PASSED
 Deno.test("automatic expiration for locks", async (t) => {
     try {
         await redis
@@ -153,7 +149,6 @@ Deno.test("automatic expiration for locks", async (t) => {
     }
 });
 
-// PASSED 
 Deno.test("locks are exclusive", async (t) => {
     try {
         await redis
@@ -197,7 +192,6 @@ Deno.test("locks are exclusive", async (t) => {
     }
 });
 
-// PASSED
 Deno.test("overlapping multi-locks are exclusive", async () => {
     try {
         await redis
@@ -246,7 +240,6 @@ Deno.test("overlapping multi-locks are exclusive", async () => {
     }
 });
 
-// PASSED
 Deno.test("the using helper acquires, extends, and releases locks", async (t) => {
     try {
         await redis
@@ -283,7 +276,6 @@ Deno.test("the using helper acquires, extends, and releases locks", async (t) =>
     }
 });
 
-// PASSED
 Deno.test("the using helper is exclusive", async (t) => {
     try {
         await redis
