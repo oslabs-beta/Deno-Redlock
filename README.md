@@ -13,7 +13,7 @@ This is an implementation of the Redlock algorithm in Deno. It is a secure, ligh
 import Redlock from "https://deno.land/x/redlock/mod.ts"
 
 ## Documentation
-(Put our Docs website URL here)
+[Deno DLM](https://denodlm.com/)
 
 ## Configuration
 
