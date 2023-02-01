@@ -1,9 +1,15 @@
-import { EventEmitter, Client, randomBytes, RedisValue } from './deps.ts';
-import { ACQUIRE_SCRIPT, EXTEND_SCRIPT, RELEASE_SCRIPT } from './scripts.ts';
-import { ClientExecutionResult, ExecutionStats, ExecutionResult, Settings, RedlockAbortSignal, } from './types.ts';
-import { ResourceLockedError, ExecutionError } from './errors.ts'
-import Lock from './lock.ts';
-import { SHA1 } from './crypto.ts';
+import { Client, EventEmitter, randomBytes, RedisValue } from "./deps.ts";
+import { ACQUIRE_SCRIPT, EXTEND_SCRIPT, RELEASE_SCRIPT } from "./scripts.ts";
+import {
+  ClientExecutionResult,
+  ExecutionResult,
+  ExecutionStats,
+  RedlockAbortSignal,
+  Settings,
+} from "./types.ts";
+import { ExecutionError, ResourceLockedError } from "./errors.ts";
+import Lock from "./lock.ts";
+import { SHA1 } from "./crypto.ts";
 
 // Define default settings.
 const defaultSettings: Readonly<Settings> = {
@@ -39,7 +45,7 @@ export default class Redlock extends EventEmitter {
       readonly acquireScript?: string | ((script: string) => string);
       readonly extendScript?: string | ((script: string) => string);
       readonly releaseScript?: string | ((script: string) => string);
-    } = {}
+    } = {},
   ) {
     super();
 
@@ -58,22 +64,18 @@ export default class Redlock extends EventEmitter {
 
     // Customize the settings for this instance. Use default settings or user provided settings
     this.settings = {
-      driftFactor:
-        typeof settings.driftFactor === "number"
-          ? settings.driftFactor
-          : defaultSettings.driftFactor,
-      retryCount:
-        typeof settings.retryCount === "number"
-          ? settings.retryCount
-          : defaultSettings.retryCount,
-      retryDelay:
-        typeof settings.retryDelay === "number"
-          ? settings.retryDelay
-          : defaultSettings.retryDelay,
-      retryJitter:
-        typeof settings.retryJitter === "number"
-          ? settings.retryJitter
-          : defaultSettings.retryJitter,
+      driftFactor: typeof settings.driftFactor === "number"
+        ? settings.driftFactor
+        : defaultSettings.driftFactor,
+      retryCount: typeof settings.retryCount === "number"
+        ? settings.retryCount
+        : defaultSettings.retryCount,
+      retryDelay: typeof settings.retryDelay === "number"
+        ? settings.retryDelay
+        : defaultSettings.retryDelay,
+      retryJitter: typeof settings.retryJitter === "number"
+        ? settings.retryJitter
+        : defaultSettings.retryJitter,
       automaticExtensionThreshold:
         typeof settings.automaticExtensionThreshold === "number"
           ? settings.automaticExtensionThreshold
@@ -81,18 +83,15 @@ export default class Redlock extends EventEmitter {
     };
 
     // Use custom scripts and script modifiers.
-    const acquireScript =
-      typeof scripts.acquireScript === "function"
-        ? scripts.acquireScript(ACQUIRE_SCRIPT)
-        : ACQUIRE_SCRIPT;
-    const extendScript =
-      typeof scripts.extendScript === "function"
-        ? scripts.extendScript(EXTEND_SCRIPT)
-        : EXTEND_SCRIPT;
-    const releaseScript =
-      typeof scripts.releaseScript === "function"
-        ? scripts.releaseScript(RELEASE_SCRIPT)
-        : RELEASE_SCRIPT;
+    const acquireScript = typeof scripts.acquireScript === "function"
+      ? scripts.acquireScript(ACQUIRE_SCRIPT)
+      : ACQUIRE_SCRIPT;
+    const extendScript = typeof scripts.extendScript === "function"
+      ? scripts.extendScript(EXTEND_SCRIPT)
+      : EXTEND_SCRIPT;
+    const releaseScript = typeof scripts.releaseScript === "function"
+      ? scripts.releaseScript(RELEASE_SCRIPT)
+      : RELEASE_SCRIPT;
 
     /**
      * Script value will be used in initial EVAL call to Redis nodes
@@ -116,7 +115,7 @@ export default class Redlock extends EventEmitter {
     this.clients = new Set(clients);
     if (this.clients.size === 0) {
       throw new Error(
-        "Redlock must be instantiated with at least one Redis client."
+        "Redlock must be instantiated with at least one Redis client.",
       );
     }
   }
@@ -131,7 +130,7 @@ export default class Redlock extends EventEmitter {
   /**
    * This method runs `.quit()` on all client connections.
    */
-   public async quit(): Promise<void> {
+  public async quit(): Promise<void> {
     const results = [];
     for (const client of this.clients) {
       results.push(client.quit());
@@ -143,10 +142,10 @@ export default class Redlock extends EventEmitter {
    * This method acquires locks on the specified resources
    * for the duration specified by the `duration` setting
    */
-   public async acquire(
+  public async acquire(
     resources: string[],
     duration: number,
-    settings?: Partial<Settings>
+    settings?: Partial<Settings>,
   ): Promise<Lock> {
     if (Math.floor(duration) !== duration) {
       throw new Error("Duration must be an integer value in milliseconds.");
@@ -159,23 +158,22 @@ export default class Redlock extends EventEmitter {
         this.scripts.acquireScript,
         resources,
         [value, duration],
-        settings
+        settings,
       );
 
       // Add 2 milliseconds to the drift to account for Redis expires precision,
       // which is 1 ms, plus the configured allowable drift factor.
-      const drift =
-        Math.round(
-          (settings?.driftFactor ?? this.settings.driftFactor) * duration
-        ) + 2;
+      const drift = Math.round(
+        (settings?.driftFactor ?? this.settings.driftFactor) * duration,
+      ) + 2;
 
       return new Lock(
         this,
         resources,
         value,
         attempts,
-        start + duration - drift
-      )
+        start + duration - drift,
+      );
     } catch (error) {
       // If there was an error acquiring the lock, release any partial lock
       // state that may exist on a minority of clients.
@@ -189,15 +187,15 @@ export default class Redlock extends EventEmitter {
     }
   }
   /**
- * This method unlocks the provided lock from all servers still persisting it.
- * It will fail with an error if it is unable to release the lock on a quorum
- * of nodes, but will make no attempt to restore the lock in the case of a
- * failure to release. It is safe to re-attempt a release or to ignore the
- * error, as the lock will automatically expire after its timeout.
- */
+   * This method unlocks the provided lock from all servers still persisting it.
+   * It will fail with an error if it is unable to release the lock on a quorum
+   * of nodes, but will make no attempt to restore the lock in the case of a
+   * failure to release. It is safe to re-attempt a release or to ignore the
+   * error, as the lock will automatically expire after its timeout.
+   */
   public release(
     lock: Lock,
-    settings?: Partial<Settings>
+    settings?: Partial<Settings>,
   ): Promise<ExecutionResult> {
     // Immediately invalidate the lock.
     lock.expiration = 0;
@@ -207,7 +205,7 @@ export default class Redlock extends EventEmitter {
       this.scripts.releaseScript,
       lock.resources,
       [lock.value],
-      settings
+      settings,
     );
   }
 
@@ -217,7 +215,7 @@ export default class Redlock extends EventEmitter {
   public async extend(
     existing: Lock,
     duration: number,
-    settings?: Partial<Settings>
+    settings?: Partial<Settings>,
   ): Promise<Lock> {
     if (Math.floor(duration) !== duration) {
       throw new Error("Duration must be an integer value in milliseconds.");
@@ -233,7 +231,7 @@ export default class Redlock extends EventEmitter {
       this.scripts.extendScript,
       existing.resources,
       [existing.value, duration],
-      settings
+      settings,
     );
 
     // Invalidate the existing lock.
@@ -241,45 +239,45 @@ export default class Redlock extends EventEmitter {
 
     // Add 2 milliseconds to the drift to account for Redis expires precision,
     // which is 1 ms, plus the configured allowable drift factor.
-    const drift =
-      Math.round(
-        (settings?.driftFactor ?? this.settings.driftFactor) * duration
-      ) + 2;
+    const drift = Math.round(
+      (settings?.driftFactor ?? this.settings.driftFactor) * duration,
+    ) + 2;
 
     const replacement = new Lock(
       this,
       existing.resources,
       existing.value,
       attempts,
-      start + duration - drift
+      start + duration - drift,
     );
     return replacement;
   }
 
   /*
- * This method returns a summary of results. Because the result of an attempt
- * can sometimes be determined before all requests are finished, each attempt
- * contains a Promise that will resolve ExecutionStats once all requests are
- * finished. A rejection of these promises should be considered undefined
- * behavior and should cause a crash.
- */
+   * This method returns a summary of results. Because the result of an attempt
+   * can sometimes be determined before all requests are finished, each attempt
+   * contains a Promise that will resolve ExecutionStats once all requests are
+   * finished. A rejection of these promises should be considered undefined
+   * behavior and should cause a crash.
+   */
   private async _execute(
     script: { value: string; hash: string },
     keys: string[],
     args: RedisValue[],
-    _settings?: Partial<Settings>
+    _settings?: Partial<Settings>,
   ): Promise<ExecutionResult> {
     const settings = _settings
       ? {
-          ...this.settings,
-          ..._settings,
-        }
+        ...this.settings,
+        ..._settings,
+      }
       : this.settings;
 
     // For the purpose of easy config serialization, we treat a retryCount of
     // -1 as equivalent to Infinity.
-    const maxAttempts =
-      settings.retryCount === -1 ? Infinity : settings.retryCount + 1;
+    const maxAttempts = settings.retryCount === -1
+      ? Infinity
+      : settings.retryCount + 1;
 
     const attempts: Promise<ExecutionStats>[] = [];
     while (true) {
@@ -299,15 +297,15 @@ export default class Redlock extends EventEmitter {
             Math.max(
               0,
               settings.retryDelay +
-                Math.floor((Math.random() * 2 - 1) * settings.retryJitter)
+                Math.floor((Math.random() * 2 - 1) * settings.retryJitter),
             ),
-            undefined
+            undefined,
           );
         });
       } else {
         throw new ExecutionError(
           "The operation was unable to achieve a quorum during its retry window.",
-          attempts
+          attempts,
         );
       }
     }
@@ -324,8 +322,8 @@ export default class Redlock extends EventEmitter {
     return await new Promise((resolve) => {
       const clientResults: Promise<ClientExecutionResult>[] = [];
       for (const client of this.clients) {
-        clientResults.push(   
-          this._attemptOperationOnClient(client, script, keys, args)
+        clientResults.push(
+          this._attemptOperationOnClient(client, script, keys, args),
         );
       }
 
@@ -369,7 +367,7 @@ export default class Redlock extends EventEmitter {
         // All votes are in.
         if (
           stats.votesFor.size + stats.votesAgainst.size ===
-          stats.membershipSize
+            stats.membershipSize
         ) {
           done();
         }
@@ -389,16 +387,20 @@ export default class Redlock extends EventEmitter {
     client: Client,
     script: { value: string; hash: string },
     keys: string[],
-    args: RedisValue[]
+    args: RedisValue[],
   ): Promise<ClientExecutionResult> {
     try {
       let result: number;
       try {
-        const shaResult = await client.evalsha(script.hash, keys, args) as unknown;
+        const shaResult = await client.evalsha(
+          script.hash,
+          keys,
+          args,
+        ) as unknown;
 
         if (typeof shaResult !== "number") {
           throw new Error(
-            `Unexpected result of type ${typeof shaResult} returned from redis.`
+            `Unexpected result of type ${typeof shaResult} returned from redis.`,
           );
         }
 
@@ -412,11 +414,12 @@ export default class Redlock extends EventEmitter {
         ) {
           throw error;
         }
-        const rawResult = (await client.eval(script.value, keys, args)) as unknown;
+        const rawResult =
+          (await client.eval(script.value, keys, args)) as unknown;
 
         if (typeof rawResult !== "number") {
           throw new Error(
-            `Unexpected result of type ${typeof rawResult} returned from redis.`
+            `Unexpected result of type ${typeof rawResult} returned from redis.`,
           );
         }
 
@@ -426,7 +429,7 @@ export default class Redlock extends EventEmitter {
       // One or more of the resources was already locked.
       if (result !== keys.length) {
         throw new ResourceLockedError(
-          `The operation was applied to: ${result} of the ${keys.length} requested resources.`
+          `The operation was applied to: ${result} of the ${keys.length} requested resources.`,
         );
       }
 
@@ -438,7 +441,7 @@ export default class Redlock extends EventEmitter {
     } catch (error) {
       if (!(error instanceof Error)) {
         throw new Error(
-          `Unexpected type ${typeof error} thrown with value: ${error}`
+          `Unexpected type ${typeof error} thrown with value: ${error}`,
         );
       }
       // Emit the error on the redlock instance for observability.
@@ -452,23 +455,22 @@ export default class Redlock extends EventEmitter {
   }
 
   /**
-   * 
    * @param resources the redis client ID
-   * @param duration 
+   * @param duration
    * @param settings optional settings
    * @param routine the callback function which uses/manipulates information on the redis client while lock is in place
    */
-   public async using<T>(
+  public async using<T>(
     resources: string[],
     duration: number,
     settings: Partial<Settings>,
-    routine?: (signal: RedlockAbortSignal) => Promise<T>
+    routine?: (signal: RedlockAbortSignal) => Promise<T>,
   ): Promise<T>;
 
   public async using<T>(
     resources: string[],
     duration: number,
-    routine: (signal: RedlockAbortSignal) => Promise<T>
+    routine: (signal: RedlockAbortSignal) => Promise<T>,
   ): Promise<T>;
 
   public async using<T>(
@@ -478,18 +480,17 @@ export default class Redlock extends EventEmitter {
       | undefined
       | Partial<Settings>
       | ((signal: RedlockAbortSignal) => Promise<T>),
-    optionalRoutine?: (signal: RedlockAbortSignal) => Promise<T>
+    optionalRoutine?: (signal: RedlockAbortSignal) => Promise<T>,
   ): Promise<T> {
-
     if (Math.floor(duration) !== duration) {
       throw new Error("Duration must be an integer value in milliseconds.");
     }
     const settings =
       settingsOrRoutine && typeof settingsOrRoutine !== "function"
         ? {
-            ...this.settings,
-            ...settingsOrRoutine,
-          }
+          ...this.settings,
+          ...settingsOrRoutine,
+        }
         : this.settings;
 
     const routine = optionalRoutine ?? settingsOrRoutine;
@@ -499,7 +500,7 @@ export default class Redlock extends EventEmitter {
 
     if (settings.automaticExtensionThreshold > duration - 100) {
       throw new Error(
-        "A lock `duration` must be at least 100ms greater than the `automaticExtensionThreshold` setting."
+        "A lock `duration` must be at least 100ms greater than the `automaticExtensionThreshold` setting.",
       );
     }
 
@@ -513,7 +514,8 @@ export default class Redlock extends EventEmitter {
     function queue(): void {
       timeout = setTimeout(
         () => (extension = extend()),
-        lock.expiration - performance.now() - settings.automaticExtensionThreshold
+        lock.expiration - performance.now() -
+          settings.automaticExtensionThreshold,
       );
     }
 

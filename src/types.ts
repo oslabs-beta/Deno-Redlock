@@ -1,16 +1,16 @@
-import { Client } from './deps.ts'
+import { Client } from "./deps.ts";
 
 export type ClientExecutionResult =
   | {
-      client: Client;
-      vote: "for";
-      value: number;
-    }
+    client: Client;
+    vote: "for";
+    value: number;
+  }
   | {
-      client: Client;
-      vote: "against";
-      error: Error;
-    };
+    client: Client;
+    vote: "against";
+    error: Error;
+  };
 
 export type ExecutionStats = {
   readonly membershipSize: number;
